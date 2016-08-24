@@ -6,6 +6,8 @@
     </encoder>
   </appender>
 
+  <!-- <logger name="arachne.assets.pipeline" level="DEBUG"/>-->
+
   <root level="WARN">
       <appender-ref ref="STDOUT"/>
   </root>

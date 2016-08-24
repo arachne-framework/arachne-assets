@@ -1,17 +1,15 @@
-(ns arachne.assets.arachne-fileset
-  (:require [clojure.tools.logging :as log]
-            [boot.tmpdir :as tmpd]
-            [clojure.java.io :as io])
+(ns arachne.assets.fileset.tmpdir
+  (:require [clojure.tools.logging :as log])
   (:import [java.nio.file Files]
            [java.nio.file.attribute FileAttribute]))
 
-(def tmp-registry (atom #{}))
+(def ^:private tmp-registry (atom #{}))
 
 (defn delete!
   "Recursively delete a directory and its contents"
   [f]
   (when (.isDirectory f)
-    (doseq [child (seq (.list f))] (delete! child)))
+    (doseq [child (seq (.listFiles f))] (delete! child)))
   (.delete f))
 
 (.addShutdownHook (Runtime/getRuntime)

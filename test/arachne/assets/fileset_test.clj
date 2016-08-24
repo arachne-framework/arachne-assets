@@ -2,24 +2,23 @@
   (:require [clojure.test :refer :all]
             [clojure.java.io :as io]
             [arachne.assets.fileset.api :as fs])
-  (:import [java.nio.file Files]
-             [java.nio.file.attribute FileAttribute]))
+  (:import [org.apache.commons.io FileUtils]
+           [java.nio.file Files CopyOption StandardCopyOption]
+           [java.nio.file.attribute FileAttribute]))
 
 (defn tmpdir
   "Return a new, unique tempfile as a java.io.File"
   []
-  (.toFile (Files/createTempDirectory "arachne"
+  (.toFile (Files/createTempDirectory "arachne-test"
              (make-array FileAttribute 0))))
 
-(defn new-fileset
-  []
-  (fs/fileset (tmpdir) (tmpdir) (tmpdir)))
-
 (deftest test-basic-add-update-commit
-  (let [fs (new-fileset)
+  (let [fs (fs/fileset)
         fs (fs/add fs (io/file "test/test-assets"))
         working (tmpdir)
-        fs (fs/commit! fs working)]
+        commit-dir (tmpdir)
+        fs (fs/commit! fs commit-dir)]
+    (FileUtils/copyDirectory commit-dir working)
     (spit (io/file working "file1.md") "NEW CONTENT")
     (spit (io/file working "dir1/file4.md") "NEW FILE")
     (let [fs (fs/add fs working)
@@ -32,7 +31,7 @@
              (set (map #(.getName %) files)))))))
 
 (deftest test-remove-test
-  (let [fs (new-fileset)
+  (let [fs (fs/fileset)
         fs (fs/add fs (io/file "test/test-assets"))
         fs (fs/remove fs "dir1/file3.md")
         dest (tmpdir)
@@ -43,14 +42,16 @@
           (set (map #(.getName %) files))))))
 
 (deftest test-diffs
-  (let [fs (new-fileset)
+  (let [fs (fs/fileset)
         fs (fs/add fs (io/file "test/test-assets"))
-        working (tmpdir)
-        fs (fs/commit! fs working)]
-    (spit (io/file working "file1.md") "NEW CONTENT")
-    (spit (io/file working "dir1/file4.md") "NEW FILE")
-    (.delete (io/file working "file2.md"))
-    (let [fs2 (fs/add fs working)
+        commit-dir (tmpdir)
+        working-dir (tmpdir)
+        fs (fs/commit! fs commit-dir)]
+    (FileUtils/copyDirectory commit-dir working-dir)
+    (spit (io/file working-dir "file1.md") "NEW CONTENT")
+    (spit (io/file working-dir "dir1/file4.md") "NEW FILE")
+    (.delete (io/file working-dir "file2.md"))
+    (let [fs2 (fs/add fs working-dir)
           fs2 (fs/remove fs2 "dir1/file3.md")]
       (is (= #{"file1.md" "dir1/file4.md"}
             (set (map :path (fs/ls (fs/diff fs fs2))))))
@@ -62,7 +63,7 @@
             (set (map :path (fs/ls (fs/changed fs fs2)))))))))
 
 (deftest test-filtering-and-meta
-  (let [fs (new-fileset)
+  (let [fs (fs/fileset)
         fs (fs/add fs (io/file "test/test-assets") :meta {:input true})
         working (tmpdir)
         fs (fs/commit! fs working)]
@@ -79,8 +80,9 @@
             (set (map #(.getName %) files)))))))
 
 (deftest test-caching
-  (let [fs-a (new-fileset)
-        fs-b (fs/fileset (tmpdir) (tmpdir) (:cache fs-a))
+  (let [cache (tmpdir)
+        fs-a (fs/fileset cache)
+        fs-b (fs/fileset cache)
         invocations (atom 0)
         cachefn (fn [dir]
                   (swap! invocations inc)
