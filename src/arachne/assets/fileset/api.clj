@@ -1,17 +1,32 @@
 (ns arachne.assets.fileset.api
-  (:refer-clojure :exclude [remove filter])
-  (:require
-    [arachne.assets.fileset.impl :as impl]))
+  (:refer-clojure :exclude [remove filter empty merge])
+  (:require  [arachne.assets.fileset.impl :as impl]
+             [arachne.assets.fileset.util :as futil]
+             [arachne.assets.fileset.tmpdir :as tmpdir]))
+
+;; These can be truly global, because they only contain immmutable
+;; content-addressed hard links or one-off subdirectories.
+(def global-blob-dir (memoize tmpdir/tmpdir!))
+(def global-scratch-dir (memoize tmpdir/tmpdir!))
+(def default-cache-dir (memoize tmpdir/tmpdir!))
 
 (defn fileset
-  "Create a new, empty fileset. `blob-tmpdir` and `scratch-tmpdir` should be
-  temporary directories. `cache-dir` may be either a temporary or a persistent
-  directory."
-  [blob-tmpdir scratch-tmpdir cache-dir]
-  (impl/->TmpFileSet {} blob-tmpdir scratch-tmpdir cache-dir))
+  "Create a new, empty fileset. Optionally, takes a directory to use as a
+  persistent cache, otherwise uses a process-wide temporary directory."
+  ([] (fileset (default-cache-dir)))
+  ([cache-dir]
+   (impl/->TmpFileSet {} (global-blob-dir) (global-scratch-dir) cache-dir)))
+
+;; Idea: we could theoretically do garbage collection:
+;; - find all instances of FileSet (would require registering in a weak map at creation)
+;; - find all TmpFiles in all FileSets
+;; - delete all blobs not referenced by a TmpFile
+;; - but it's probably unnecessary
 
 (defn commit!
-  "Persist the immutable fileset to a concrete directory."
+  "Persist the immutable fileset to a concrete directory. Note that the emitted
+  files are hard links to the fileset's internal blob storage, and therefore
+  immutable. If you want to modify them, you will need to copy them first."
   [fs dir]
   (impl/-commit! fs dir))
 
@@ -62,7 +77,7 @@
   [before after]
   (let [{:keys [added changed]}
         (impl/diff* before after nil)]
-    (update-in added [:tree] merge (:tree changed))))
+    (update-in added [:tree] clojure.core/merge (:tree changed))))
 
 (defn removed
   "Return a Fileset containing only the files present in `before` and not in
@@ -102,3 +117,27 @@
   "Return the the files in the fileset as a set of TmpFile records"
   [fileset]
   (impl/-ls fileset))
+
+(defn empty
+  "Create a new empty fileset with the same cache dir as the input"
+  [fs]
+  (filter fs (constantly false)))
+
+(defn- merge-tempfile
+  "Merge two tempfiles, logging a warning if one would overwrite the other"
+  [a b]
+  (let [[winner loser] (if (< (impl/-time a) (impl/-time b)) [b a] [a b])]
+    (when-not (and (= (impl/-hash a) (impl/-hash b))
+                   (= (impl/-meta a) (impl/-meta b)))
+      (futil/warn "File at path %s was overwritten while merging filesets. Using the file timestamped %s, which is newer than %s"
+        (impl/-path winner) (impl/-time winner) (impl/-time loser)))
+    (update winner :meta #(clojure.core/merge %1 (impl/-meta loser)))))
+
+(defn merge
+  "Merge multiple filesets. If a path exists in more than one fileset, with
+  different content, the most recent one is used and a warning is logged."
+  ([fs] fs)
+  ([a b]
+   (assoc a :tree (merge-with merge-tempfile (:tree a) (:tree b))))
+  ([a b & more]
+   (reduce merge a (cons b more))))

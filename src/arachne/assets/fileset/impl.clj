@@ -14,10 +14,11 @@
     [java.util Properties]
     [java.nio.file Path Files SimpleFileVisitor LinkOption StandardCopyOption
                    FileVisitResult]
-    [java.nio.file.attribute FileAttribute]))
+    [java.nio.file.attribute FileAttribute PosixFilePermission]))
 
 (def CACHE_VERSION "1.0.0")
-(def state         (atom {:prev {} :cache {}}))
+(def mem-cache (atom {}))
+(def prev-fs (atom {}))
 
 (def link-opts    (into-array LinkOption []))
 (def tmp-attrs    (into-array FileAttribute []))
@@ -76,7 +77,8 @@
         (let [name (str (.getName out (dec (.getNameCount out))))
               tmp  (Files/createTempFile blob name nil tmp-attrs)]
           (Files/copy src tmp copy-opts)
-          (Files/move tmp out copy-opts))))))
+          (Files/move tmp out copy-opts)
+          (.setReadOnly (.toFile out)))))))
 
 (defn- mkvisitor
   [^Path root ^File blob tree link]
@@ -143,11 +145,12 @@
 (defn- get-cached!
   [cache-location cache-key seedfn scratch]
   (debug "Adding cached fileset %s...\n" cache-key)
-  (or (get-in @state [:cache cache-key])
+  (or (get-in @mem-cache [(.getCanonicalPath cache-location) cache-key])
       (let [cache-dir (cache-dir cache-location cache-key)
             manifile  (manifest-file cache-location cache-key)
             store!    #(with-let [m %]
-                         (swap! state assoc-in [:cache cache-key] m))]
+                         (swap! mem-cache assoc-in
+                           [(.getCanonicalPath cache-location) cache-key] m))]
         (or (and (.exists manifile)
                  (store! (read-manifest manifile cache-dir)))
             (let [tmp-dir (scratch-dir! scratch)]
@@ -234,7 +237,7 @@
     (set (vals tree)))
 
   (-commit! [this dir]
-    (let [prev (get-in @state [:prev (.getCanonicalPath ^File dir)])
+    (let [prev (get @prev-fs (.getCanonicalPath ^File dir))
           {:keys [added removed changed]} (diff* prev this [:id])]
       (debug "Committing fileset...\n")
       (doseq [tmpf (set/union (-ls removed) (-ls changed))
@@ -260,7 +263,7 @@
                                (util/hard-link src dst)))
                          (recur this tmpfs))))]
         (with-let [_ this]
-          (swap! state assoc-in [:prev (.getCanonicalPath ^File dir)] this)
+          (swap! prev-fs assoc (.getCanonicalPath ^File dir) this)
           (debug "Commit complete.\n")))))
 
   (-rm [this tmpfiles]

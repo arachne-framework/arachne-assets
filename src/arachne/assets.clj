@@ -1,6 +1,7 @@
 (ns arachne.assets
   (:require [arachne.core.config :as cfg]
-            [arachne.assets.schema :as schema]))
+            [arachne.assets.schema :as schema]
+            [arachne.assets.config :as config]))
 
 (defn schema
   "Return the schema for the assets module"
@@ -10,4 +11,8 @@
 (defn configure
   "Configure the assets module"
   [cfg]
-  cfg)
+  (-> cfg
+    (config/configure-inputs)
+    (config/configure-outputs)
+    (config/configure-transforms)
+    (config/configure-merges)))
