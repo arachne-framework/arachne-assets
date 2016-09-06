@@ -1,6 +1,6 @@
 (ns arachne.assets.pipeline
   (:refer-clojure :exclude [merge])
-  (:require [arachne.assets.fileset.api :as fs]
+  (:require [arachne.fileset :as fs]
             [arachne.assets.config :as acfg]
             [arachne.assets.util :as autil]
             [com.stuartsierra.component :as c]

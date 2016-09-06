@@ -2,8 +2,8 @@
   (:require [clojure.test :refer :all]
             [arachne.core :as core]
             [arachne.assets :as assets]
-            [arachne.assets.fileset.api :as fs]
-            [arachne.assets.fileset.tmpdir :as tmpdir]
+            [arachne.fileset :as fs]
+            [arachne.fileset.tmpdir :as tmpdir]
             [com.stuartsierra.component :as c]
             [clojure.string :as str]
             [clojure.java.io :as io])
