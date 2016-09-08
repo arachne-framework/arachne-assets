@@ -4,8 +4,8 @@
  :license {"Apache Software License 2.0" "http://www.apache.org/licenses/LICENSE-2.0"}
  :deps [[org.clojure/clojure "1.9.0-alpha11" :scope "provided"]
         [org.clojure/core.async "0.2.385"]
-        [org.arachne-framework/arachne-core "0.1.0-master-0023-61ba0c7"]
-        ;[org.arachne-framework/arachne-core ["git@github.com:arachne-framework/arachne-core.git" "e89bd021"] :local "../arachne-core"]
+        [org.arachne-framework/arachne-core "0.1.0-master-0043-f12095d"]
+        ;[org.arachne-framework/arachne-core "0.1.0-provenance-0039-de7455e" :local "../arachne-core"]
         [org.arachne-framework/arachne-fileset "1.0.0-beta1"]
         [boot/worker "2.6.0"]
         [boot/base "2.6.0"]

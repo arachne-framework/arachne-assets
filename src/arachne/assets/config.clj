@@ -36,7 +36,8 @@
                        :arachne.component/constructor
                        :arachne.assets.pipeline/input}) cs)]
     (if (seq txdata)
-      (cfg/update cfg txdata)
+      (cfg/with-provenance :module `configure-outputs
+        (cfg/update cfg txdata))
       cfg)))
 
 (defn configure-outputs
@@ -53,7 +54,8 @@
                   :arachne.component/constructor
                   :arachne.assets.pipeline/output})) cs)]
     (if (seq txdata)
-      (cfg/update cfg txdata)
+      (cfg/with-provenance :module `configure-outputs
+        (cfg/update cfg txdata))
       cfg)))
 
 (defn configure-transforms
@@ -74,7 +76,8 @@
                   :arachne.component/constructor
                   :arachne.assets.pipeline/transform})) cs)]
     (if (seq txdata)
-      (cfg/update cfg txdata)
+      (cfg/with-provenance :module `configure-outputs
+        (cfg/update cfg txdata))
       cfg)))
 
 (defn configure-merges
@@ -94,5 +97,6 @@
                 :arachne.component/constructor :arachne.assets.pipeline/merge})
           cs)]
     (if (seq txdata)
-      (cfg/update cfg txdata)
+      (cfg/with-provenance :module `configure-outputs
+        (cfg/update cfg txdata))
       cfg)))

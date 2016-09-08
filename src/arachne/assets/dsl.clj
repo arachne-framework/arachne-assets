@@ -2,7 +2,7 @@
   (:refer-clojure :exclude [merge])
   (:require [arachne.core.config :as cfg]
             [arachne.core.util :as util]
-            [arachne.core.config.init :as script]
+            [arachne.core.config.init :as script :refer [defdsl]]
             [arachne.assets.dsl.specs]
             [clojure.spec :as s]
             [clojure.string :as str]))
@@ -26,12 +26,11 @@
         txdata [(util/mkeep tx-map)]]
     (cfg/resolve-tempid (script/transact txdata) eid)))
 
-(defn input-dir
+(defdsl input-dir
   "Define a asset pipeline component that reads from a directory on the file
   system. The path maybe absolute or process-relative. Returns the entity ID of
   the component."
   [& args]
-  (apply util/validate-args `input-dir args)
   (input (s/conform (:args (s/get-spec `input-dir)) args) false))
 
 (defn input-resource
@@ -47,11 +46,10 @@
     (val eid-or-aid)
     (cfg/attr @script/*config* [:arachne/id (val eid-or-aid)] :db/id)))
 
-(defn output-dir
+(defdsl output-dir
   "Define a asset pipeline component that writes to a directory on the file
   system."
   [& args]
-  (apply util/validate-args `output-dir args)
   (let [conformed (s/conform (:args (s/get-spec `output-dir)) args)
         tid (cfg/tempid)
         id (:arachne-id conformed)
@@ -64,10 +62,9 @@
         txdata [(util/mkeep tx-map)]]
     (cfg/resolve-tempid (script/transact txdata) tid)))
 
-(defn transform
+(defdsl transform
   "Define a custom transformer asset pipeline component"
   [& args]
-  (apply util/validate-args `transform args)
   (let [conformed (s/conform (:args (s/get-spec `transform)) args)
         tid (cfg/tempid)
         id (:arachne-id conformed)
@@ -80,10 +77,9 @@
         txdata [(util/mkeep tx-map)]]
     (cfg/resolve-tempid (script/transact txdata) tid)))
 
-(defn merge
+(defdsl merge
   "Define a merging asset pipeline component"
   [& args]
-  (apply util/validate-args `merge args)
   (let [conformed (s/conform (:args (s/get-spec `merge)) args)
         tid (cfg/tempid)
         id (:arachne-id conformed)
