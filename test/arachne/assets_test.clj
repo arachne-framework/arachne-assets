@@ -154,6 +154,59 @@
     (is (= "THIS IS A FILE" (slurp (io/file output-dir "file1.out"))))
     (c/stop rt)))
 
+(comment
+
+  (def output-dir (tmpdir/tmpdir!))
+  (def script (transform-script (.getPath output-dir)))
+  (def cfg (core/build-config [:org.arachne-framework/arachne-assets] script))
+  (def rt (core/runtime cfg :test/rt))
+  (def rt' (c/start rt))
+
+
+  (defrecord TA []
+    c/Lifecycle
+    (start [this] (println "starting TA") this)
+    (stop [this] (println "stopping TA") this))
+
+  (defrecord TB [ta]
+    c/Lifecycle
+    (start [t] (println "starting TB, ta:" ta) t)
+    (stop [t] (println "stopping TB") t))
+
+  (defrecord TC [tb]
+    c/Lifecycle
+    (start [t] (println "starting TC, tb:" tb) t)
+    (stop [t] (println "stopping TC") t))
+
+  (defn ta []
+    (println "instantiating ta")
+    (java.util.Date.))
+
+  (defn tb []
+    (println "instantiating tb")
+    {})
+
+  (defn tc []
+    (println "instantiating tc")
+    (->TC nil))
+
+  (def sys (c/system-map
+                :ta (ta)
+                :tb (tb)
+                :tc (tc)))
+
+  (def sys' (c/system-using sys
+              {:tb [:ta]
+               :tc [:tb]}))
+
+  (def sys'' (c/start sys'))
+
+
+
+
+
+  )
+
 (defn merge-script
   [input-a-path input-b-path output-path]
   `(do

@@ -7,6 +7,7 @@
      (o/class :arachne.assets/PipelineElement [:arachne.core/Component]
        "A component that is a logical element of an asset pipeline, resolvable to
        an Arachne fileset"
+       :arachne.assets.specs/PipelineElement
        (o/attr :arachne.assets.pipeline-element/inputs :many :arachne.assets/PipelineElement
          "The process-relative path to which to persist the files."))
 
@@ -20,9 +21,9 @@
          "The process-relative path of a directory containing files that will constitute the input FileSet.")
        (o/attr :arachne.assets.input/classpath? :one-or-none :boolean
          "If true, will treat the path as classpath-relative instead of process-relative.")
-       (o/attr :arachne.assets.input/include :one-or-more :string
+       (o/attr :arachne.assets.input/include :many :string
          "If present, includes only files that match this regex.")
-       (o/attr :arachne.assets.input/exclude :one-or-more :string
+       (o/attr :arachne.assets.input/exclude :many :string
          "If present, do not include files that match this regex."))
 
      (o/class :arachne.assets/Output [:arachne.assets/PipelineElement]
@@ -35,6 +36,7 @@
 
      (o/class :arachne.assets/Transform [:arachne.assets/PipelineElement]
        "A logical transformation on a FileSet."
+       :arachne.assets.specs/Transform
        (o/attr :arachne.assets.transform/transformer :one :arachne.core/Component
          "A component satisfying the arachne.assets.pipeline/Transformer protocol which actually performs the transformation"))
 
