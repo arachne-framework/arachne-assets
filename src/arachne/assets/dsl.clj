@@ -5,6 +5,7 @@
             [arachne.core.config.init :as script :refer [defdsl]]
             [arachne.assets.dsl.specs]
             [clojure.spec :as s]
+            [arachne.error :as e]
             [clojure.string :as str]))
 
 (defn- input
@@ -37,7 +38,7 @@
   "Define a asset pipeline component that reads from a directory on the
   classpath. Returns the entity ID the component."
   [& args]
-  (apply util/validate-args `input-resource args)
+  (apply e/assert-args `input-resource args)
   (input (s/conform (:args (s/get-spec `input-resource)) args) false))
 
 (defn- eid

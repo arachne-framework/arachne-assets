@@ -8,7 +8,8 @@
             [clojure.tools.logging :as log]
             [clojure.core.async :as a :refer [go go-loop >! <! <!! >!!]]
             [clojure.java.io :as io]
-            [arachne.core.util :as util])
+            [arachne.core.util :as util]
+            [arachne.error :as e :refer [error deferror]])
   (:import [java.util.concurrent LinkedBlockingQueue TimeUnit]))
 
 (defprotocol Transformer
@@ -101,8 +102,12 @@
     (reset! running false)
     this))
 
-(util/deferror ::transform-failed
-  "Transformation failed for Transform :eid (Arachne ID: :aid). An empty fileset was passed to the next pipeline element.")
+(deferror ::transform-failed
+  :message "Transformation failed for Transform :eid (Arachne ID: :aid)."
+  :explanation "A transform component threw an exception while invoking its `-transform` method. An empty fileset was passed to the next pipeline element."
+  :suggestions ["Investigate the `cause` of this exception to determine what went wrong more specifically."]
+  :ex-data-docs {:eid "The entity id of the transformer component"
+                 :aid "The arachne ID of the transformer component"})
 
 (defrecord Transform [input transformer running dist]
   PipelineElement
@@ -118,7 +123,7 @@
                     (try
                       (-transform transformer fs)
                       (catch Throwable t
-                        (util/log-error ::transform-failed
+                        (e/log-error ::transform-failed
                           {:eid (:db/id this)
                            :aid (:arachne/id this)} t)
                         (fs/empty fs)))))]
@@ -136,12 +141,10 @@
 (defn- find-merge-inputs
   "Return a Merge component's input components"
   [c]
-  (let [dep-keys (->> c
-                   :arachne.assets.pipeline-element/inputs
-                   (map :db/id)
-                   (map str)
-                   (map keyword))]
-    ((apply juxt dep-keys) c)))
+  (->> c
+    :arachne.assets.pipeline-element/inputs
+    (map :db/id)
+    (map #(get c %))))
 
 (defrecord Merge [running dist]
   PipelineElement
