@@ -4,11 +4,11 @@
             [arachne.assets.config :as acfg]
             [arachne.assets.util :as autil]
             [com.stuartsierra.component :as c]
-            [boot.watcher :as watch]
             [clojure.tools.logging :as log]
             [clojure.core.async :as a :refer [go go-loop >! <! <!! >!!]]
             [clojure.java.io :as io]
             [arachne.core.util :as util]
+            [hawk.core :as hawk]
             [arachne.error :as e :refer [error deferror]])
   (:import [java.util.concurrent LinkedBlockingQueue TimeUnit]))
 
@@ -45,18 +45,18 @@
           cache (cache-dir (:arachne/config this) (:db/id this))
           path (:arachne.assets.input/path this)
           dir (io/file path)
-          queue (LinkedBlockingQueue.)
-          watcher (watch/make-watcher queue [path])
-          read #(-> (fs/fileset cache) (fs/add dir))]
-      (future
-        (while @watching
-          (when (.poll queue 2000 TimeUnit/MILLISECONDS)
-            (log/debug "Watch triggered:" path)
-            (>!! ch (read))))
-        (a/close! ch))
-      (assoc this :output-ch ch :dist (autil/dist ch) :watcher watcher)))
+          on-change (fn [evt ctx]
+                      (log/debug "Watch triggered:" path)
+                      (>!! ch (-> (fs/fileset cache) (fs/add dir)))
+                      ctx)
+          watcher (hawk/watch! [{:paths [path]
+                                 :filter hawk/file?
+                                 :handler on-change}])
+          dist (autil/dist ch)]
+      (on-change nil nil)
+      (assoc this :output-ch ch :dist dist :watcher watcher)))
   (stop [this]
-    (watch/stop-watcher watcher)
+    (hawk/stop! watcher)
     (reset! watching false)
     (a/close! output-ch)
     (dissoc this :watcher :output-ch)))
