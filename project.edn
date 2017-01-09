@@ -2,10 +2,10 @@
  :version {:major 0, :minor 1, :patch 0, :qualifier :dev}
  :description "Arachne's asset pipeline"
  :license {"Apache Software License 2.0" "http://www.apache.org/licenses/LICENSE-2.0"}
- :deps [[org.clojure/clojure "1.9.0-alpha12" :scope "provided"]
+ :deps [[org.clojure/clojure "1.9.0-alpha14" :scope "provided"]
         [org.clojure/core.async "0.2.385"]
         [org.arachne-framework/arachne-core "0.1.0-master-0066-45e67ab"]
-        [org.arachne-framework/arachne-fileset "1.0.0-beta1"]
+        [org.arachne-framework/arachne-fileset "1.1.1"]
         [hawk "0.2.11"]
         [commons-io/commons-io "2.5" :scope "test"]
         [adzerk/boot-test "1.1.2" :scope "test"]
