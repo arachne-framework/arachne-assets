@@ -6,43 +6,44 @@
             [arachne.fileset.tmpdir :as tmpdir]
             [com.stuartsierra.component :as c]
             [clojure.string :as str]
-            [clojure.java.io :as io])
+            [clojure.java.io :as io]
+
+            [arachne.core.dsl :as a]
+            [arachne.assets.dsl :as aa])
   (:import [java.io FileNotFoundException]))
 
-(defn input-output-cfg-script
+(defn input-output-cfg
   [output-path]
-  `(do
-     (require '[arachne.core.dsl :as ~'core])
-     (require '[arachne.assets.dsl :as ~'a])
 
-     (~'core/runtime :test/rt [:test/output])
+  (a/runtime :test/rt [:test/output])
 
-     (a/input-dir :test/input "test/test-assets")
-     (a/output-dir :test/output :test/input ~output-path)))
+  (aa/input-dir :test/input :dir "test/test-assets")
+  (aa/output-dir :test/output :dir output-path)
+
+  (aa/pipeline [:test/input :test/output]))
 
 (deftest input-output-test
-  (let [output-dir (tmpdir/tmpdir!)
-        script (input-output-cfg-script (.getPath output-dir))
-        cfg (core/build-config [:org.arachne-framework/arachne-assets] script)
+  (let [output-dir (.getCanonicalPath (tmpdir/tmpdir!))
+        cfg (core/build-config [:org.arachne-framework/arachne-assets]
+              `(arachne.assets-test/input-output-cfg ~output-dir))
         rt (core/runtime cfg :test/rt)
         rt (c/start rt)]
     (is (= #{"file1.md" "file2.md" "file3.md"}
-          (->> (file-seq output-dir)
+          (->> (file-seq (io/file output-dir))
             (filter #(.isFile %))
             (map #(.getName %))
             (set))))
     (c/stop rt)))
 
-(defn watcher-script
+(defn watcher-cfg
   [input-path output-path]
-  `(do
-     (require '[arachne.core.dsl :as ~'core])
-     (require '[arachne.assets.dsl :as ~'a])
 
-     (~'core/runtime :test/rt [:test/output])
+  (a/runtime :test/rt [:test/output])
 
-     (a/input-dir :test/input ~input-path :watch? true)
-     (a/output-dir :test/output :test/input ~output-path)))
+  (aa/input-dir :test/input :dir input-path :watch? true)
+  (aa/output-dir :test/output :dir output-path)
+
+  (aa/pipeline [:test/input :test/output]))
 
 (defn- waitfor
   "Wait until a predicate returns truth, with a timeout. Returns true if it ever
@@ -70,8 +71,8 @@
         input-file (io/file input-dir "file.md")
         output-dir (tmpdir/tmpdir!)
         output-file (io/file output-dir "file.md")
-        script (watcher-script (.getPath input-dir) (.getPath output-dir))
-        cfg (core/build-config [:org.arachne-framework/arachne-assets] script)
+        cfg (core/build-config [:org.arachne-framework/arachne-assets]
+              `(arachne.assets-test/watcher-cfg ~(.getPath input-dir) ~(.getPath output-dir)))
         rt (core/runtime cfg :test/rt)
         rt (c/start rt)]
     (spit input-file "INITIAL VALUE")
@@ -83,25 +84,25 @@
     (c/stop rt)))
 
 
-(defn fork-script
+(defn fork-cfg
   [output-path-a output-path-b]
-  `(do
-     (require '[arachne.core.dsl :as ~'core])
-     (require '[arachne.assets.dsl :as ~'a])
 
-     (~'core/runtime :test/rt [:test/output-a :test/output-b])
+  (a/runtime :test/rt [:test/output-a :test/output-b])
 
-     (a/input-dir :test/input "test/test-assets")
-     (a/output-dir :test/output-a :test/input ~output-path-a)
-     (a/output-dir :test/output-b :test/input ~output-path-b)))
+  (aa/input-dir :test/input :dir "test/test-assets")
+  (aa/output-dir :test/output-a :dir output-path-a)
+  (aa/output-dir :test/output-b :dir output-path-b)
+
+  (aa/pipeline
+    [:test/input :test/output-a]
+    [:test/input :test/output-b]))
 
 (deftest fork-test
   (let [output-dir-a (tmpdir/tmpdir!)
         output-dir-b (tmpdir/tmpdir!)
-        script (fork-script
-                 (.getPath output-dir-a)
-                 (.getPath output-dir-b))
-        cfg (core/build-config [:org.arachne-framework/arachne-assets] script)
+        cfg (core/build-config [:org.arachne-framework/arachne-assets]
+              `(arachne.assets-test/fork-cfg ~(.getPath output-dir-a)
+                                             ~(.getPath output-dir-b)))
         rt (core/runtime cfg :test/rt)
         rt (c/start rt)]
     (is (= 3 (->> (file-seq output-dir-a)
@@ -127,25 +128,25 @@
 
       (fs/add (fs/empty fs) working-dir :include [#".*\.out"]))))
 
-(defn transform-script
+(defn transform-cfg
   [output-path]
-  `(do
-     (require '[arachne.core.dsl :as ~'core])
-     (require '[arachne.assets.dsl :as ~'a])
 
-     (~'core/runtime :test/rt [:test/output])
+  (a/runtime :test/rt [:test/output])
 
-     (~'core/component :test/test-transform {}
-       'arachne.assets-test/test-transformer)
+  (a/component :test/test-transform {} `arachne.assets-test/test-transformer)
 
-     (a/input-dir :test/input "test/test-assets")
-     (a/transform :test/xform :test/input :test/test-transform)
-     (a/output-dir :test/output :test/xform ~output-path)))
+  (aa/input-dir :test/input :dir "test/test-assets")
+  (aa/transform :test/xform {:transformer :test/test-transform})
+  (aa/output-dir :test/output :dir output-path)
+
+  (aa/pipeline
+    [:test/input :test/xform]
+    [:test/xform :test/output]))
 
 (deftest transform-test
   (let [output-dir (tmpdir/tmpdir!)
-        script (transform-script (.getPath output-dir))
-        cfg (core/build-config [:org.arachne-framework/arachne-assets] script)
+        cfg (core/build-config [:org.arachne-framework/arachne-assets]
+              `(arachne.assets-test/transform-cfg ~(.getPath output-dir)))
         rt (core/runtime cfg :test/rt)
         rt (c/start rt)]
     (is (= 3 (->> (file-seq output-dir)
@@ -154,71 +155,16 @@
     (is (= "THIS IS A FILE" (slurp (io/file output-dir "file1.out"))))
     (c/stop rt)))
 
-(comment
-
-  (def output-dir (tmpdir/tmpdir!))
-  (def script (transform-script (.getPath output-dir)))
-  (def cfg (core/build-config [:org.arachne-framework/arachne-assets] script))
-  (def rt (core/runtime cfg :test/rt))
-  (def rt' (c/start rt))
-
-
-  (defrecord TA []
-    c/Lifecycle
-    (start [this] (println "starting TA") this)
-    (stop [this] (println "stopping TA") this))
-
-  (defrecord TB [ta]
-    c/Lifecycle
-    (start [t] (println "starting TB, ta:" ta) t)
-    (stop [t] (println "stopping TB") t))
-
-  (defrecord TC [tb]
-    c/Lifecycle
-    (start [t] (println "starting TC, tb:" tb) t)
-    (stop [t] (println "stopping TC") t))
-
-  (defn ta []
-    (println "instantiating ta")
-    (java.util.Date.))
-
-  (defn tb []
-    (println "instantiating tb")
-    {})
-
-  (defn tc []
-    (println "instantiating tc")
-    (->TC nil))
-
-  (def sys (c/system-map
-                :ta (ta)
-                :tb (tb)
-                :tc (tc)))
-
-  (def sys' (c/system-using sys
-              {:tb [:ta]
-               :tc [:tb]}))
-
-  (def sys'' (c/start sys'))
-
-
-
-
-
-  )
-
-(defn merge-script
+(defn merge-cfg
   [input-a-path input-b-path output-path]
-  `(do
-     (require '[arachne.core.dsl :as ~'core])
-     (require '[arachne.assets.dsl :as ~'a])
 
-     (~'core/runtime :test/rt [:test/output])
+  (a/runtime :test/rt [:test/output])
 
-     (a/input-dir :test/input-a ~input-a-path)
-     (a/input-dir :test/input-b ~input-b-path)
-     (a/merge :test/merge [:test/input-a :test/input-b])
-     (a/output-dir :test/output :test/merge ~output-path)))
+  (aa/input-dir :test/input-a :dir input-a-path)
+  (aa/input-dir :test/input-b :dir input-b-path)
+  (aa/output-dir :test/output :dir output-path)
+
+  (aa/pipeline [[:test/input-a :test/input-b] :test/output]))
 
 (deftest merge-test
   (let [output-dir (tmpdir/tmpdir!)
@@ -228,11 +174,10 @@
         _ (spit (io/file input-b-dir "file2.md") "file2")
         _ (spit (io/file input-a-dir "file3.md") "file3")
         _ (spit (io/file input-b-dir "file3.md") "file3")
-        script (merge-script
-                 (.getPath input-a-dir)
-                 (.getPath input-b-dir)
-                 (.getPath output-dir))
-        cfg (core/build-config [:org.arachne-framework/arachne-assets] script)
+        cfg (core/build-config [:org.arachne-framework/arachne-assets]
+              `(arachne.assets-test/merge-cfg ~(.getPath input-a-dir)
+                                              ~(.getPath input-b-dir)
+                                              ~(.getPath output-dir)))
         rt (core/runtime cfg :test/rt)
         rt (c/start rt)]
     (is (= 3 (->> (file-seq output-dir)

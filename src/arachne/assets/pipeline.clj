@@ -24,25 +24,18 @@
 
 ;; Note: To support a "pull" model for pipelines, we could simply add a second
 ;; channel that consumers would use to request a re-calculation.
-(defprotocol PipelineElement
+(defprotocol Producer
   (-observe [this ch] "Place the elements inital and updated FileSet values on
   the supplied channel, returning the channel"))
 
-(defn- cache-dir
-  "Find the cache dir to use for a given pipeline element"
-  [cfg eid]
-  (if-let [cache-path (acfg/find-cache-path cfg eid)]
-    (io/file cache-path)
-    (fs/default-cache-dir)))
-
 (defrecord WatchingInput [dist output-ch watcher watching]
-  PipelineElement
+  Producer
   (-observe [_ ch] (a/tap dist ch))
   c/Lifecycle
   (start [this]
     (reset! watching true)
     (let [ch (a/chan (a/sliding-buffer 1))
-          cache (cache-dir (:arachne/config this) (:db/id this))
+          cache (fs/default-cache-dir)
           path (:arachne.assets.input/path this)
           dir (io/file path)
           on-change (fn [evt ctx]
@@ -62,12 +55,12 @@
     (dissoc this :watcher :output-ch)))
 
 (defrecord Input [dist output-ch]
-  PipelineElement
+  Producer
   (-observe [_ ch] (a/tap dist ch))
   c/Lifecycle
   (start [this]
     (let [ch (a/chan)
-          cache (cache-dir (:arachne/config this) (:db/id this))
+          cache (fs/default-cache-dir)
           path (:arachne.assets.input/path this)
           fs1 (fs/fileset cache)
           fs (fs/add fs1 (io/file path))]
@@ -78,13 +71,22 @@
     (a/close! output-ch)
     (dissoc this :output-ch :dist)))
 
-(defrecord Output [input dist running]
-  PipelineElement
+(defn- find-input-components
+  "Return the component's input components"
+  [c]
+  (->> c
+    :arachne.assets.consumer/inputs
+    (map :db/id)
+    (map #(get c %))))
+
+(defrecord Output [dist running]
+  Producer
   (-observe [_ ch] (a/tap dist ch))
   c/Lifecycle
   (start [this]
     (reset! running true)
-    (let [dist (autil/dist (-observe input (a/chan)))
+    (let [input (first (find-input-components this))
+          dist (autil/dist (-observe input (a/chan)))
           ch (a/tap dist (a/chan))
           path (:arachne.assets.output/path this)
           output-file (io/file path)
@@ -109,13 +111,14 @@
   :ex-data-docs {:eid "The entity id of the transformer component"
                  :aid "The arachne ID of the transformer component"})
 
-(defrecord Transform [input transformer running dist]
-  PipelineElement
+(defrecord Transform [transformer running dist]
+  Producer
   (-observe [_ ch] (a/tap dist ch))
   c/Lifecycle
   (start [this]
     (reset! running true)
-    (let [input-ch (-observe input (a/chan))
+    (let [input (first (find-input-components this))
+          input-ch (-observe input (a/chan))
           output-ch (a/chan)
           dist (autil/dist output-ch)
           xform (fn [fs]
@@ -138,16 +141,8 @@
     (reset! running false)
     this))
 
-(defn- find-merge-inputs
-  "Return a Merge component's input components"
-  [c]
-  (->> c
-    :arachne.assets.pipeline-element/inputs
-    (map :db/id)
-    (map #(get c %))))
-
 (defrecord Merge [running dist]
-  PipelineElement
+  Producer
   (-observe [_ ch] (a/tap dist ch))
   c/Lifecycle
   (start [this]
@@ -160,7 +155,7 @@
     (let [output-ch (a/chan (a/sliding-buffer 1))
           dist (autil/dist output-ch)
           input-channels (map #(let [ch (a/chan)] (-observe % ch))
-                           (find-merge-inputs this))
+                           (find-input-components this))
           cache (atom (into {}
                         (map (fn [ch] [ch (<!! ch)])
                           input-channels)))

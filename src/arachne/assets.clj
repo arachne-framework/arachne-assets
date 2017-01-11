@@ -13,7 +13,4 @@
   "Configure the assets module"
   [cfg]
   (-> cfg
-    (config/configure-inputs)
-    (config/configure-outputs)
-    (config/configure-transforms)
-    (config/configure-merges)))
+    (config/configure-input-dependencies)))

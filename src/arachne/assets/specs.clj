@@ -2,6 +2,6 @@
   (:require [clojure.spec :as s]
             [arachne.assets.pipeline :as p]))
 
-(s/def ::PipelineElement (partial satisfies? p/PipelineElement))
+(s/def ::Producer (partial satisfies? p/Producer))
 
 (s/def ::Transformer #(satisfies? p/Transformer %))
