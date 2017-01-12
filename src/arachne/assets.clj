@@ -13,4 +13,5 @@
   "Configure the assets module"
   [cfg]
   (-> cfg
+    (config/configure-transform-dependencies)
     (config/configure-input-dependencies)))

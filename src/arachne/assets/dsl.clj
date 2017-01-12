@@ -101,9 +101,7 @@
   (let [[_ opts] (s/conform ::transform-opts opts)
         entity {:arachne/id arachne-id
                 :arachne.component/constructor :arachne.assets.pipeline/transform
-                :arachne.assets.transform/transformer (resolve-ref (:transformer opts))
-                :arachne.component/dependencies {:arachne.component.dependency/entity (resolve-ref (:transformer opts))
-                                                 :arachne.component.dependency/key :transformer}}]
+                :arachne.assets.transform/transformer (resolve-ref (:transformer opts))}]
     (script/transact [entity])))
 
 (defn- wire
