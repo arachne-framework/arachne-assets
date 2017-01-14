@@ -4,6 +4,11 @@
 
 This Arachne module which provides support for asset pipelines and static site generation.
 
+# Possible Enhancements:
+
+- Transform could be implemented slightly more cleanly/flexibly in terms of transducers
+ - Create a more low-level, async transform that operates on input/output channels directly (but still handles dists for you)
+
 ## WARNING
 
 This repository is not yet ready for public consumption. Many key

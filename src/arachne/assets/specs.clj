@@ -3,5 +3,3 @@
             [arachne.assets.pipeline :as p]))
 
 (s/def ::Producer (partial satisfies? p/Producer))
-
-(s/def ::Transformer #(satisfies? p/Transformer %))

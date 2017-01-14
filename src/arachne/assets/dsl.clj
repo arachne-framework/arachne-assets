@@ -6,7 +6,7 @@
             [arachne.core.dsl.specs :as acs]
             [arachne.core.config.specs :as ccs]
             [clojure.spec :as s]
-            [arachne.error :as e]
+            [arachne.error :as e :refer [deferror error]]
             [clojure.string :as str]))
 
 (s/def ::dir string?)
@@ -25,21 +25,17 @@
                                  :opt-un [::watch?
                                           ::include
                                           ::exclude]))
-(s/def ::ref (s/or :aid ::acs/id
-                   :eid integer?
-                   :tid #(instance? arachne.core.config.Tempid %)))
-
-(defn- input
-  "Define an asset pipeline input"
+(defn- input-dir*
+  "Define an asset pipeline input directory"
   [id opts classpath?]
   (let [[_ opts] (s/conform ::input-opts opts)
         entity (util/map-transform opts {:arachne/id id
-                                         :arachne.component/constructor :arachne.assets.pipeline/input
-                                         :arachne.assets.input/classpath? classpath?}
-                 :dir     :arachne.assets.input/path identity
-                 :watch?  :arachne.assets.input/watch? identity
-                 :include :arachne.assets.input/include str
-                 :exclude :arachne.assets.input/exclude str)]
+                                         :arachne.component/constructor :arachne.assets.pipeline/input-directory
+                                         :arachne.assets.input-directory/classpath? classpath?}
+                 :dir     :arachne.assets.input-directory/path identity
+                 :watch?  :arachne.assets.input-directory/watch? identity
+                 :include :arachne.assets.input-directory/include str
+                 :exclude :arachne.assets.input-directory/exclude str)]
     (script/transact [entity])))
 
 (s/fdef input-dir
@@ -51,7 +47,7 @@
   system. The path maybe absolute or process-relative. Returns the entity ID of
   the component."
   [arachne-id & opts]
-  (input arachne-id opts false))
+  (input-dir* arachne-id opts false))
 
 (s/fdef input-resource
   :args (s/cat :arachne-id ::acs/id
@@ -61,7 +57,7 @@
   "Define a asset pipeline component that reads from a directory on the
   classpath. Returns the entity ID the component."
   [arachne-id & opts]
-  (input arachne-id opts true))
+  (input-dir* arachne-id opts true))
 
 (s/def ::output-opts (util/keys** :req-un [::dir]))
 
@@ -75,72 +71,59 @@
   [arachne-id & opts]
   (let [[_ opts] (s/conform ::output-opts opts)
         entity {:arachne/id arachne-id
-                :arachne.component/constructor :arachne.assets.pipeline/output
-                :arachne.assets.output/path (:dir opts)}]
+                :arachne.component/constructor :arachne.assets.pipeline/output-directory
+                :arachne.assets.output-directory/path (:dir opts)}]
     (script/transact [entity])))
 
-(s/def ::transformer ::ref)
+(s/def ::construtor (s/and symbol? namespace))
+(s/def ::transducer-opts (util/keys** :req-un [::constructor]))
 
-(s/def ::transform-opts (util/keys** :req-un [::transformer]))
-
-(s/fdef transform
+(s/fdef transducer
   :args (s/cat :arachne-id ::acs/id
-               :opts ::transform-opts))
+               :opts ::transducer-opts))
 
-(defn- resolve-ref
-  "Given the conformed value of a ::ref spec, return correct txdata map"
-  [[type id]]
-  (case type
-     :aid {:arachne/id id}
-     :eid {:db/id id}
-     :tid {:db/id id}))
-
-(defdsl transform
-  "Define a custom transformer asset pipeline component"
+(defdsl transducer
+  "A pipeline element that applies a Clojure transducer filesets that pass through it"
   [arachne-id & opts]
-  (let [[_ opts] (s/conform ::transform-opts opts)
+  (let [[_ opts] (s/conform ::transducer-opts opts)
         entity {:arachne/id arachne-id
-                :arachne.component/constructor :arachne.assets.pipeline/transform
-                :arachne.assets.transform/transformer (resolve-ref (:transformer opts))}]
+                :arachne.component/constructor :arachne.assets.pipeline/transducer
+                :arachne.assets.transducer/constructor (keyword (:constructor opts))}]
     (script/transact [entity])))
 
 (defn- wire
-  "Given the conformed ref of an input and output, return txdata that links them up."
-  [input output]
-  (let [entity (resolve-ref output)]
-    (assoc entity :arachne.assets.consumer/inputs [(resolve-ref input)])))
-
-(defn- implicit-merge
-  "Given two conformed entity refs, return txdata for a pipeline component that merges them."
-  [a b]
-  {:db/id (cfg/tempid)
-   :arachne/instance-of [:db/ident :arachne.assets/Merge]
-   :arachne.component/constructor :arachne.assets.pipeline/merge
-   :arachne.assets.consumer/inputs [(resolve-ref a) (resolve-ref b)]})
+  "Given a tuple containing [producer-eid consumer-eid name], return an entity map that links them up"
+  [[producer consumer name]]
+  (let [name (or name ::default)]
+    {:db/id consumer
+     :arachne.assets.consumer/inputs [{:arachne.assets.input/entity producer
+                                       :arachne.assets.input/name name}]}))
 
 
-(s/def ::pipeline-tuple (s/tuple (s/or :ref ::ref
-                                       :merge (s/coll-of ::ref :min-count 2))
-                                 ::ref))
+(s/def ::ref (s/or :aid ::acs/id
+                   :eid #(or (integer? %) (instance? arachne.core.config.Tempid %))))
+
+(s/def ::pipeline-tuple (s/cat :producer ::ref :consumer ::ref :name (s/? keyword?)))
 
 (s/def ::pipeline-tuples (s/coll-of ::pipeline-tuple :min-count 1))
 (s/fdef pipeline :args ::pipeline-tuples)
+
+(defn- resolve-aid
+  "Given the conformed value of a reference, assert that the entity actually exists in the context
+   config, returning the entities eid."
+  [[type id]]
+  (case type
+    :eid id
+    :aid (script/resolve-aid id `pipeline)))
 
 (defdsl pipeline
   "Wire together pipeline elements into a directed graph. Takes a number of pair tuples, each item
    in the tuple must be either an Arachne ID or an entity ID.
 
-  A simple tuple of the form [A B] indicates that A is an input of B.
-
-  A nested tuple of the form [[A B] C] indicates that A and B should be merged, and the resulting
-  pipeline element should be the input of B."
+  A simple tuple of the form [A B] indicates that A is an input of B."
   [& tuples]
   (let [conformed (s/conform ::pipeline-tuples tuples)
-        txdata (mapcat (fn [[[type input] output]]
-                          (case type
-                            :ref [(wire input output)]
-                            :merge (let [m (apply implicit-merge input)
-                                         tid-ref [:tid (:db/id m)]]
-                                     [m (wire tid-ref output)])))
-                 conformed)]
+        tuples (map (fn [{:keys [producer consumer name]}]
+                      [(resolve-aid producer) (resolve-aid consumer) name]) conformed)
+        txdata (map wire tuples)]
     (script/transact txdata)))

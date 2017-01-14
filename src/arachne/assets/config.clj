@@ -5,18 +5,19 @@
   "Configure pipeline components to have a component dependency on all their pipeline inputs."
   [cfg]
   (cfg/with-provenance :module `configure-input-dependencies
-    (let [components (cfg/q cfg '[:find ?component ?input
+    (let [components (cfg/q cfg '[:find ?consumer ?producer
                                   :where
-                                  [?component :arachne.assets.consumer/inputs ?input]])
-          txdata (map (fn [[component input]]
-                        {:db/id component
-                         :arachne.component/dependencies [{:arachne.component.dependency/entity input}]})
+                                  [?consumer :arachne.assets.consumer/inputs ?input]
+                                  [?input :arachne.assets.input/entity ?producer]])
+          txdata (map (fn [[consumer producer]]
+                        {:db/id consumer
+                         :arachne.component/dependencies [{:arachne.component.dependency/entity producer}]})
                    components)]
       (if (seq txdata)
         (cfg/update cfg txdata)
         cfg))))
 
-(defn configure-transform-dependencies
+ #_(defn configure-transform-dependencies
   "Configure transform components to have a component dependency on their transformation"
   [cfg]
   (cfg/with-provenance :module `configure-transform-dependencies

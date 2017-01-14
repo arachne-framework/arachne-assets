@@ -113,22 +113,22 @@
                (count))))
     (c/stop rt)))
 
-(defn test-transformer
-  []
+(defn transducer-ctor
+  [transducer]
   (let [working-dir (tmpdir/tmpdir!)]
-    (fn [fs]
-      (fs/commit! fs working-dir)
+    (map (fn [fs]
+           (fs/commit! fs working-dir)
 
-      ;; Imperatively update working dir
-      (doseq [f (file-seq working-dir)]
-        (when (re-find #"\.md$" (str f))
-          (let [new-path (str/replace (str f) #"\.md$" ".out")]
-            (spit new-path
-              (str/upper-case (slurp f))))))
+           ;; Imperatively update working dir
+           (doseq [f (file-seq working-dir)]
+             (when (re-find #"\.md$" (str f))
+               (let [new-path (str/replace (str f) #"\.md$" ".out")]
+                 (spit new-path
+                   (str/upper-case (slurp f))))))
 
-      (fs/add (fs/empty fs) working-dir :include [#".*\.out"]))))
+           (fs/add (fs/empty fs) working-dir :include [#".*\.out"])))))
 
-(defn transform-cfg
+(defn transducer-cfg
   [output-path]
 
   (a/runtime :test/rt [:test/output])
@@ -136,17 +136,17 @@
   (a/component :test/test-transform {} `arachne.assets-test/test-transformer)
 
   (aa/input-dir :test/input :dir "test/test-assets")
-  (aa/transform :test/xform {:transformer :test/test-transform})
+  (aa/transducer :test/xform :constructor 'arachne.assets-test/transducer-ctor)
   (aa/output-dir :test/output :dir output-path)
 
   (aa/pipeline
     [:test/input :test/xform]
     [:test/xform :test/output]))
 
-(deftest transform-test
+(deftest transducer-test
   (let [output-dir (tmpdir/tmpdir!)
         cfg (core/build-config [:org.arachne-framework/arachne-assets]
-              `(arachne.assets-test/transform-cfg ~(.getPath output-dir)))
+              `(arachne.assets-test/transducer-cfg ~(.getPath output-dir)))
         rt (core/runtime cfg :test/rt)
         rt (c/start rt)]
     (is (= 3 (->> (file-seq output-dir)
@@ -164,7 +164,8 @@
   (aa/input-dir :test/input-b :dir input-b-path)
   (aa/output-dir :test/output :dir output-path)
 
-  (aa/pipeline [[:test/input-a :test/input-b] :test/output]))
+  (aa/pipeline [:test/input-a :test/output]
+               [:test/input-b :test/output]))
 
 (deftest merge-test
   (let [output-dir (tmpdir/tmpdir!)

@@ -13,34 +13,28 @@
   (:import [java.util.concurrent LinkedBlockingQueue TimeUnit]))
 
 (defprotocol Transformer
-  "A logical transformation on a FileSet"
-  (-transform [this input]
+  "A component that translates from multiple input channels to a single output channel."
+  (-init [this ]
     "Given a fileset, return a transformed fileset."))
-
-(extend-protocol Transformer
-  clojure.lang.Fn
-  (-transform [f input] (f input)))
-
 
 ;; Note: To support a "pull" model for pipelines, we could simply add a second
 ;; channel that consumers would use to request a re-calculation.
 (defprotocol Producer
-  (-observe [this ch] "Place the elements inital and updated FileSet values on
-  the supplied channel, returning the channel"))
+  (-observe [this] "Return a channel upon which will be placed the initial and updated FileSet values.
 
-(defrecord WatchingInput [dist output-ch watcher watching]
+  The returned channel will use a sliding buffer of size 1, so slow consumers of will not delay the producer."))
+
+(defrecord WatchingInputDir [dist output-ch watcher]
   Producer
-  (-observe [_ ch] (a/tap dist ch))
+  (-observe [_] (a/tap dist (a/chan (a/sliding-buffer 1))))
   c/Lifecycle
   (start [this]
-    (reset! watching true)
-    (let [ch (a/chan (a/sliding-buffer 1))
-          cache (fs/default-cache-dir)
-          path (:arachne.assets.input/path this)
+    (let [ch (a/chan)
+          path (:arachne.assets.input-directory/path this)
           dir (io/file path)
           on-change (fn [evt ctx]
                       (log/debug "Watch triggered:" path)
-                      (>!! ch (-> (fs/fileset cache) (fs/add dir)))
+                      (>!! ch (-> (fs/fileset) (fs/add dir)))
                       ctx)
           watcher (hawk/watch! [{:paths [path]
                                  :filter hawk/file?
@@ -50,149 +44,135 @@
       (assoc this :output-ch ch :dist dist :watcher watcher)))
   (stop [this]
     (hawk/stop! watcher)
-    (reset! watching false)
     (a/close! output-ch)
     (dissoc this :watcher :output-ch)))
 
-(defrecord Input [dist output-ch]
+(defrecord InputDir [dist output-ch]
   Producer
-  (-observe [_ ch] (a/tap dist ch))
+  (-observe [_] (a/tap dist (a/chan (a/sliding-buffer 1))))
   c/Lifecycle
   (start [this]
     (let [ch (a/chan)
-          cache (fs/default-cache-dir)
-          path (:arachne.assets.input/path this)
-          fs1 (fs/fileset cache)
-          fs (fs/add fs1 (io/file path))]
+          path (:arachne.assets.input-directory/path this)
+          fs (fs/add (fs/fileset) (io/file path))
+          dist (autil/dist ch)]
       (log/debug "Processing asset pipeline input:" path)
-      (go (>! ch fs))
-      (assoc this :output-ch ch :dist (autil/dist ch))))
+      (>!! ch fs)
+      (assoc this :output-ch ch :dist dist)))
   (stop [this]
     (a/close! output-ch)
     (dissoc this :output-ch :dist)))
 
-(defn- find-input-components
-  "Return the component's input components"
-  [c]
-  (->> c
-    :arachne.assets.consumer/inputs
-    (map :db/id)
-    (map #(get c %))))
+(defn input-channels
+  "Given a Consumer component instance, calls `-observe` on each of the inputs and return a seq of [<name>
+   <chan>] tuples for all the component's named inputs."
+  [component]
+  (map (fn [input-entity]
+         (let [name (:arachne.assets.input/name input-entity)
+               producer-eid (-> input-entity :arachne.assets.input/entity :db/id)
+               producer (get component producer-eid)]
+           [name (-observe producer)]))
+    (:arachne.assets.consumer/inputs component)))
 
-(defrecord Output [dist running]
+(defn merge-inputs
+  "Given a collection of channels that emit filesets,return a single channel upon which will be
+   placed the reuslt of merging *all* the inputs filesets, whenever *any* of them changes.
+
+   Generally used for components that should accept multiple inputs, but do not make a
+   distinction regarding which is which.
+
+   This function will block until all of the inputs have returned at least one fileset, and the
+   returned channel will already have one filset put on it.
+
+   The output chan will close if any of the inputs closes."
+  [inputs]
+  (if (= 1 (count inputs))
+    (first inputs)
+    (let [output (a/chan (a/sliding-buffer 1))
+          initial-vals (for [ch inputs]
+                         [ch (<!! ch)])
+          cache (atom (into {} initial-vals))
+          new-fs (fn []
+                   (apply fs/merge (vals @cache)))]
+      (a/put! output (new-fs))
+      (a/go-loop []
+        (let [[fs ch] (a/alts! (keys @cache))]
+          (if (nil? fs)
+            (a/close! output)
+            (do
+              (swap! cache assoc ch fs)
+              (>! output (new-fs))
+              (recur)))))
+      output)))
+
+(defrecord OutputDir [dist]
   Producer
-  (-observe [_ ch] (a/tap dist ch))
+  (-observe [_] (a/tap dist (a/chan (a/sliding-buffer 1))))
   c/Lifecycle
   (start [this]
-    (reset! running true)
-    (let [input (first (find-input-components this))
-          dist (autil/dist (-observe input (a/chan)))
-          ch (a/tap dist (a/chan))
-          path (:arachne.assets.output/path this)
+    (let [input-ch (merge-inputs (map second (input-channels this)))
+          dist (autil/dist input-ch)
+          path (:arachne.assets.output-directory/path this)
           output-file (io/file path)
-          recieve (fn [fs]
+          receive (fn [fs]
                     (when fs
                       (locking this
                         (log/debug "Processing asset pipeline output:" path)
-                        (fs/commit! fs output-file))))]
+                        (fs/commit! fs output-file))))
+          receive-ch (a/tap dist (a/chan (a/sliding-buffer 1)))]
       (.mkdirs output-file)
-      (recieve (<!! ch))
-      (go (while @running (recieve (<! ch)))
-          (a/close! ch)))
-    (assoc this :dist dist))
-  (stop [this]
-    (reset! running false)
-    this))
+      (receive (<!! receive-ch))
+      (go (while (receive (<! receive-ch))))
+      (assoc this :dist dist)))
+  (stop [this] this))
 
-(deferror ::transform-failed
-  :message "Transformation failed for Transform :eid (Arachne ID: :aid)."
-  :explanation "A transform component threw an exception while invoking its `-transform` method. An empty fileset was passed to the next pipeline element."
+
+(deferror ::transduce-failed
+  :message "Transducer failed failed in asset Transducer with :eid (Arachne ID: :aid)."
+  :explanation "An asset pipeline transducer with eid `:eid` and Arachne ID `:aid` threw an exception during pipeline processing.
+
+  An empty fileset was passed to the next pipeline element."
   :suggestions ["Investigate the `cause` of this exception to determine what went wrong more specifically."]
   :ex-data-docs {:eid "The entity id of the transformer component"
                  :aid "The arachne ID of the transformer component"})
 
-(defrecord Transform [transformer running dist]
+(defrecord Transducer [dist]
   Producer
-  (-observe [_ ch] (a/tap dist ch))
+  (-observe [_] (a/tap dist (a/chan (a/sliding-buffer 1))))
   c/Lifecycle
   (start [this]
-    (reset! running true)
-    (let [input (first (find-input-components this))
-          input-ch (-observe input (a/chan))
-          output-ch (a/chan)
-          dist (autil/dist output-ch)
-          xform (fn [fs]
-                  (locking this
-                    (try
-                      (-transform transformer fs)
-                      (catch Throwable t
-                        (e/log-error ::transform-failed
-                          {:eid (:db/id this)
-                           :aid (:arachne/id this)} t)
-                        (fs/empty fs)))))]
-      (go-loop []
-        (when-let [fs (<! input-ch)]
-          (>! output-ch (xform fs)))
-        (if @running
-          (recur)
+    (let [xform-ctor (util/require-and-resolve (:arachne.assets.transducer/constructor this))
+          xform (@xform-ctor this)
+          ex-handler (fn [t]
+                       (e/log-error ::transduce-failed
+                         {:eid (:db/id this)
+                          :aid (:arachne/id this)} t)
+                       (fs/fileset))
+          input-ch (merge-inputs (map second (input-channels this)))
+          output-ch (a/chan (a/sliding-buffer 1) xform ex-handler)
+          dist (autil/dist output-ch)]
+      (a/go-loop []
+        (if-let [v (<! input-ch)]
+          (do
+            (>! output-ch v)
+            (recur))
           (a/close! output-ch)))
       (assoc this :dist dist)))
-  (stop [this]
-    (reset! running false)
-    this))
+  (stop [this] this))
 
-(defrecord Merge [running dist]
-  Producer
-  (-observe [_ ch] (a/tap dist ch))
-  c/Lifecycle
-  (start [this]
-    (reset! running true)
-    ;; Each source must provide at least one value before a single value is put
-    ;; on the output channel (before it can even start).
-    ;; From then on, whenever *any* source is updated, a merge value is
-    ;; calculated using the most recent values of each of the other sources, and
-    ;; put on the output channel.
-    (let [output-ch (a/chan (a/sliding-buffer 1))
-          dist (autil/dist output-ch)
-          input-channels (map #(let [ch (a/chan)] (-observe % ch))
-                           (find-input-components this))
-          cache (atom (into {}
-                        (map (fn [ch] [ch (<!! ch)])
-                          input-channels)))
-          new-fs (fn []
-                   (apply fs/merge (vals @cache)))]
-      (a/put! output-ch (new-fs))
-      (a/go-loop []
-        (let [[fs ch] (a/alts! (keys @cache))]
-          (if (nil? fs)
-            (a/close! output-ch)
-            (do
-              (swap! cache assoc ch fs)
-              (>! output-ch (new-fs))
-              (when @running (recur))))))
-      (assoc this :dist dist)))
-  (stop [this]
-    (reset! running false)
-    this))
-
-(defn input
-  "Constructor for an :arachne.assets/Input component"
+(defn input-directory
+  "Constructor for an :arachne.assets/InputDirectory component"
   [entity]
-  (if (:arachne.assets.input/watch? entity)
-    (map->WatchingInput {:watching (atom false)})
-    (map->Input {})))
+  (if (:arachne.assets.input-directory/watch? entity)
+    (map->WatchingInputDir {})
+    (map->InputDir {})))
 
-(defn output
-  "Constructor for an :arachne.assets/Output component"
+(defn output-directory
+  "Constructor for an :arachne.assets/OutputDirectory component"
   [cfg eid]
-  (map->Output {:running (atom false)}))
+  (map->OutputDir {}))
 
-(defn transform
-  "Constructor for an :arachne.assets/Transform component"
+(defn transducer
+  "Constructor for an :arachne.assets/Transducer component"
   [cfg eid]
-  (map->Transform {:running (atom false)}))
-
-(defn merge
-  "Constructor for an :arachne.assets/Merge component"
-  [cfg eid]
-  (map->Merge {:running (atom false)}))
+  (map->Transducer {}))
