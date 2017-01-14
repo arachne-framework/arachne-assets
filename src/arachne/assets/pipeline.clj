@@ -24,26 +24,34 @@
 
   The returned channel will use a sliding buffer of size 1, so slow consumers of will not delay the producer."))
 
-(defrecord WatchingInputDir [dist output-ch watcher]
+(defn watch-dir
+  "Given a directory path, return a tuple of [terminatefn- chan]. Immediately, and then
+   whenever the contents of the directory change, a fileset will be placed on the channel until the
+   terminate function is called."
+  [dir]
+  (let [ch (a/chan (a/sliding-buffer 1))
+        watcher-atom (atom nil)
+        on-change (fn [evt ctx]
+                    (when-not (>!! ch (fs/add (fs/fileset) dir))
+                      (when-let [watcher @watcher-atom]
+                        (hawk/stop! watcher)))
+                    ctx)]
+    (reset! watcher-atom (hawk/watch! [{:paths [(.getPath dir)]
+                                        :filter hawk/file?
+                                        :handler on-change}]))
+    (on-change nil nil)
+    ch))
+
+(defrecord WatchingInputDir [dist output-ch terminate-fn]
   Producer
   (-observe [_] (a/tap dist (a/chan (a/sliding-buffer 1))))
   c/Lifecycle
   (start [this]
-    (let [ch (a/chan)
-          path (:arachne.assets.input-directory/path this)
-          dir (io/file path)
-          on-change (fn [evt ctx]
-                      (log/debug "Watch triggered:" path)
-                      (>!! ch (-> (fs/fileset) (fs/add dir)))
-                      ctx)
-          watcher (hawk/watch! [{:paths [path]
-                                 :filter hawk/file?
-                                 :handler on-change}])
+    (let [path (:arachne.assets.input-directory/path this)
+          ch (watch-dir (io/file path))
           dist (autil/dist ch)]
-      (on-change nil nil)
-      (assoc this :output-ch ch :dist dist :watcher watcher)))
+      (assoc this :output-ch ch :dist dist :terminate-fn terminate-fn)))
   (stop [this]
-    (hawk/stop! watcher)
     (a/close! output-ch)
     (dissoc this :watcher :output-ch)))
 
