@@ -19,8 +19,8 @@
       "A specific input to a consumer"
       (m/attr :arachne.assets.input/entity :one :ref :arachne.assets/Producer
         "The producer element.")
-      (m/attr :arachne.assets.input/name :one :keyword
-        "Name that identifies this input."))
+      (m/attr :arachne.assets.input/roles :many :keyword
+        "Roles that this input may have."))
 
     (m/type :arachne.assets/InputDirectory [:arachne.assets/Producer]
       "A Producer deriving its filesets from a location in the File System"

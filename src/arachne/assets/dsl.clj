@@ -92,18 +92,18 @@
     (script/transact [entity])))
 
 (defn- wire
-  "Given a tuple containing [producer-eid consumer-eid name], return an entity map that links them up"
-  [[producer consumer name]]
-  (let [name (or name ::default)]
-    {:db/id consumer
-     :arachne.assets.consumer/inputs [{:arachne.assets.input/entity producer
-                                       :arachne.assets.input/name name}]}))
-
+  "Given a tuple containing [producer-eid consumer-eid roles], return an entity map that links them up"
+  [[producer consumer roles]]
+  {:db/id consumer
+   :arachne.assets.consumer/inputs [(util/mkeep {:arachne.assets.input/entity producer
+                                                 :arachne.assets.input/roles roles})]})
 
 (s/def ::ref (s/or :aid ::acs/id
                    :eid #(or (integer? %) (instance? arachne.core.config.Tempid %))))
 
-(s/def ::pipeline-tuple (s/cat :producer ::ref :consumer ::ref :name (s/? keyword?)))
+(s/def ::roles (s/coll-of keyword? :kind set? :min-count 1))
+
+(s/def ::pipeline-tuple (s/cat :producer ::ref :consumer ::ref :roles (s/? ::roles)))
 
 (s/def ::pipeline-tuples (s/coll-of ::pipeline-tuple :min-count 1))
 (s/fdef pipeline :args ::pipeline-tuples)
@@ -123,7 +123,7 @@
   A simple tuple of the form [A B] indicates that A is an input of B."
   [& tuples]
   (let [conformed (s/conform ::pipeline-tuples tuples)
-        tuples (map (fn [{:keys [producer consumer name]}]
-                      [(resolve-aid producer) (resolve-aid consumer) name]) conformed)
+        tuples (map (fn [{:keys [producer consumer roles]}]
+                      [(resolve-aid producer) (resolve-aid consumer) roles]) conformed)
         txdata (map wire tuples)]
     (script/transact txdata)))

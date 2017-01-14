@@ -1,6 +1,7 @@
 (ns arachne.assets-test
   (:require [clojure.test :refer :all]
             [arachne.core :as core]
+            [arachne.core.config :as cfg]
             [arachne.assets :as assets]
             [arachne.fileset :as fs]
             [arachne.fileset.tmpdir :as tmpdir]
@@ -164,8 +165,8 @@
   (aa/input-dir :test/input-b :dir input-b-path)
   (aa/output-dir :test/output :dir output-path)
 
-  (aa/pipeline [:test/input-a :test/output]
-               [:test/input-b :test/output]))
+  (aa/pipeline [:test/input-a :test/output #{:role-1}]
+               [:test/input-b :test/output #{:role-2}]))
 
 (deftest merge-test
   (let [output-dir (tmpdir/tmpdir!)
@@ -181,6 +182,15 @@
                                               ~(.getPath output-dir)))
         rt (core/runtime cfg :test/rt)
         rt (c/start rt)]
+
+    (testing "roles are persisted in config"
+      (is (= #{:role-1 :role-2}
+            (set (cfg/q cfg '[:find [?r ...]
+                              :where
+                              [?o :arachne/id :test/output]
+                              [?o :arachne.assets.consumer/inputs ?i]
+                              [?i :arachne.assets.input/roles ?r]])))))
+
     (is (= 3 (->> (file-seq output-dir)
                (filter #(re-find #"\.md" (str %)))
                (count))))

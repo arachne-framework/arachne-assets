@@ -64,14 +64,14 @@
     (dissoc this :output-ch :dist)))
 
 (defn input-channels
-  "Given a Consumer component instance, calls `-observe` on each of the inputs and return a seq of [<name>
-   <chan>] tuples for all the component's named inputs."
+  "Given a Consumer component instance, calls `-observe` on each of the inputs and return a seq of
+   [<chan> <roles>] tuples for all the component's inputs."
   [component]
   (map (fn [input-entity]
-         (let [name (:arachne.assets.input/name input-entity)
+         (let [roles (:arachne.assets.input/roles input-entity)
                producer-eid (-> input-entity :arachne.assets.input/entity :db/id)
                producer (get component producer-eid)]
-           [name (-observe producer)]))
+           [(-observe producer) roles]))
     (:arachne.assets.consumer/inputs component)))
 
 (defn merge-inputs
@@ -110,7 +110,7 @@
   (-observe [_] (a/tap dist (a/chan (a/sliding-buffer 1))))
   c/Lifecycle
   (start [this]
-    (let [input-ch (merge-inputs (map second (input-channels this)))
+    (let [input-ch (merge-inputs (map first (input-channels this)))
           dist (autil/dist input-ch)
           path (:arachne.assets.output-directory/path this)
           output-file (io/file path)
@@ -148,7 +148,7 @@
                          {:eid (:db/id this)
                           :aid (:arachne/id this)} t)
                        (fs/fileset))
-          input-ch (merge-inputs (map second (input-channels this)))
+          input-ch (merge-inputs (map first (input-channels this)))
           output-ch (a/chan (a/sliding-buffer 1) xform ex-handler)
           dist (autil/dist output-ch)]
       (a/go-loop []
