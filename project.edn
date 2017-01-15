@@ -3,20 +3,31 @@
  :description "Arachne's asset pipeline"
  :license {"Apache Software License 2.0" "http://www.apache.org/licenses/LICENSE-2.0"}
  :deps [[org.clojure/clojure "1.9.0-alpha14" :scope "provided"]
-        [org.clojure/core.async "0.2.385"]
-        [org.arachne-framework/arachne-core "0.1.0-master-0071-16826f0"]
+        [org.clojure/core.async "0.2.385"
+         :exclusions [org.clojure/clojure]]
+        [org.arachne-framework/arachne-http "0.1.0-master-0040-e4ecbdd"
+         :exclusions [org.clojure/data.priority-map
+                      org.clojure/tools.reader
+                      commons-codec]]
         [org.arachne-framework/arachne-fileset "1.1.3"]
-        [hawk "0.2.11"]
+        [hawk "0.2.11"
+         :exclusions [org.clojure/clojure]]
         [commons-io/commons-io "2.5" :scope "test"]
         [adzerk/boot-test "1.1.2" :scope "test"]
-        [org.clojure/test.check "0.9.0" :scope "test"]
-        [org.clojure/tools.namespace "0.2.11" :scope "test"]
+        [org.clojure/test.check "0.9.0" :scope "test"
+         :exclusions [org.clojure/clojure]]
+        [org.clojure/tools.namespace "0.2.11" :scope "test"
+         :exclusions [org.clojure/clojure]]
         [datascript "0.15.2" :scope "test"]
         [com.datomic/datomic-free "0.9.5350"
          :exclusions [org.slf4j/slf4j-api
                       org.slf4j/slf4j-nop
                       org.slf4j/slf4j-log4j12
-                      org.slf4j/log4j-over-slf4j]
+                      org.slf4j/log4j-over-slf4j
+                      org.slf4j/jcl-over-slf4j
+                      org.slf4j/jul-to-slf4j
+                      org.clojure/clojure
+                      commons-codec]
          :scope "test"]
         [ch.qos.logback/logback-classic "1.1.3" :scope "test"]
         [org.slf4j/jul-to-slf4j "1.7.12" :scope "test"
@@ -26,4 +37,4 @@
         [org.slf4j/log4j-over-slf4j "1.7.12" :scope "test"
          :exclusions [org.slf4j/slf4j-api]]
         [clj-http "2.2.0" :scope "test"
-         :exclusions [commons-codec]]]}
+         :exclusions [commons-io]]]}
