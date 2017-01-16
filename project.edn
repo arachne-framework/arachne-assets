@@ -3,7 +3,7 @@
  :description "Arachne's asset pipeline"
  :license {"Apache Software License 2.0" "http://www.apache.org/licenses/LICENSE-2.0"}
  :deps [[org.clojure/clojure "1.9.0-alpha14" :scope "provided"]
-        [org.clojure/core.async "0.2.385"
+        [org.clojure/core.async "0.2.391"
          :exclusions [org.clojure/clojure]]
         [org.arachne-framework/arachne-http "0.1.0-master-0047-22b61d6"
          :exclusions [org.clojure/data.priority-map
