@@ -2,94 +2,94 @@
   (:refer-clojure :exclude [merge])
   (:require [arachne.core.config :as cfg]
             [arachne.core.util :as util]
-            [arachne.core.config.init :as script :refer [defdsl]]
-            [arachne.core.dsl.specs :as acs]
+            [arachne.core.config.script :as script :refer [defdsl]]
             [arachne.core.config.specs :as ccs]
             [clojure.spec :as s]
             [arachne.error :as e :refer [deferror error]]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [arachne.core.dsl :as core]))
 
 (s/def ::dir string?)
 (s/def ::watch? boolean?)
+(s/def ::classpath? boolean?)
 
-(s/def ::pattern (partial instance? java.util.regex.Pattern))
-
-(s/def ::pattern-or-patterns
-  (s/or :pattern ::pattern
-    :patterns (s/coll-of ::pattern :min-count 1)))
-
-(s/def ::include ::pattern-or-patterns)
-(s/def ::exclude ::pattern-or-patterns)
-
-(s/def ::input-opts (util/keys** :req-un [::dir]
-                                 :opt-un [::watch?
-                                          ::include
-                                          ::exclude]))
-(defn- input-dir*
-  "Define an asset pipeline input directory"
-  [id opts classpath?]
-  (let [[_ opts] (s/conform ::input-opts opts)
-        entity (util/map-transform opts {:arachne/id id
-                                         :arachne.component/constructor :arachne.assets.pipeline/input-directory
-                                         :arachne.assets.input-directory/classpath? classpath?}
-                 :dir     :arachne.assets.input-directory/path identity
-                 :watch?  :arachne.assets.input-directory/watch? identity
-                 :include :arachne.assets.input-directory/include str
-                 :exclude :arachne.assets.input-directory/exclude str)]
-    (script/transact [entity])))
-
-(s/fdef input-dir
-  :args (s/cat :arachne-id ::acs/id
-               :opts ::input-opts))
+(s/def ::input-opts (util/keys** :opt-un [::watch?
+                                          ;; TODO: implement include/exclude
+                                          ;; ::include
+                                          ;; ::exclude
+                                          ::classpath?]))
 
 (defdsl input-dir
-  "Define a asset pipeline component that reads from a directory on the file
+  "Define a asset producer component that reads from a directory on the file
   system. The path maybe absolute or process-relative. Returns the entity ID of
-  the component."
-  [arachne-id & opts]
-  (input-dir* arachne-id opts false))
+  the component.
 
-(s/fdef input-resource
-  :args (s/cat :arachne-id ::acs/id
-               :opts ::input-opts))
+  Arguments are:
 
-(defdsl input-resource
-  "Define a asset pipeline component that reads from a directory on the
-  classpath. Returns the entity ID the component."
-  [arachne-id & opts]
-  (input-dir* arachne-id opts true))
+  - arachne-id (optional): the Arachne ID of the component
+  - dir (mandatory): the directory to read from
+  - opts (optional): map (or kwargs) of additional options
 
-(s/def ::output-opts (util/keys** :req-un [::dir]))
+  Options currently supported are:
 
-(s/fdef output-dir
-  :args (s/cat :arachne-id ::acs/id
-               :opts ::output-opts))
+  - :watch? - should the input watch for changes in the directory? Defaults to false.
+  - :classpath? - true if the given directory is relative to the current classpath, rather than the current project
+
+  Returns the entity ID of the newly created component."
+  (s/cat :arachne-id (s/? ::core/arachne-id)
+         :dir ::dir
+         :opts ::input-opts)
+  [<arachne-id> dir & opts]
+  (let [tid (cfg/tempid)
+        entity (util/mkeep {:db/id tid
+                            :arachne/id (:arachne-id &args)
+                            :arachne.component/constructor :arachne.assets.pipeline/input-directory
+                            :arachne.assets.input-directory/path (:dir &args)
+                            :arachne.assets.input-directory/classpath? (-> &args :opts second :classpath?)
+                            :arachne.assets.input-directory/watch? (-> &args :opts second :watch?)})]
+    (script/transact [entity] tid)))
 
 (defdsl output-dir
-  "Define a asset pipeline component that writes to a directory on the file
-  system."
-  [arachne-id & opts]
-  (let [[_ opts] (s/conform ::output-opts opts)
-        entity {:arachne/id arachne-id
-                :arachne.component/constructor :arachne.assets.pipeline/output-directory
-                :arachne.assets.output-directory/path (:dir opts)}]
-    (script/transact [entity])))
+  "Define a asset consumer component that writes to a directory on the file system.
 
-(s/def ::construtor (s/and symbol? namespace))
-(s/def ::transducer-opts (util/keys** :req-un [::constructor]))
+  Arguments are:
 
-(s/fdef transducer
-  :args (s/cat :arachne-id ::acs/id
-               :opts ::transducer-opts))
+  - arachne-id (optional): The Arachne ID of the component
+  - dir (mandatory): The directory of the component
+
+  Returns the entity ID of the newly created component."
+  (s/cat :arachne-id (s/? ::core/arachne-id)
+         :dir ::dir)
+  [<arachne-id> dir]
+  (let [tid (cfg/tempid)
+        entity (util/mkeep {:db/id tid
+                            :arachne/id (:arachne-id &args)
+                            :arachne.component/constructor :arachne.assets.pipeline/output-directory
+                            :arachne.assets.output-directory/path (:dir &args)})]
+    (script/transact [entity] tid)))
+
+(s/def ::constructor (s/and symbol? namespace))
 
 (defdsl transducer
-  "A pipeline element that applies a Clojure transducer filesets that pass through it"
-  [arachne-id & opts]
-  (let [[_ opts] (s/conform ::transducer-opts opts)
-        entity {:arachne/id arachne-id
-                :arachne.component/constructor :arachne.assets.pipeline/transducer
-                :arachne.assets.transducer/constructor (keyword (:constructor opts))}]
-    (script/transact [entity])))
+  "Define an asset consumer/producer component that applies a Clojure transducer filesets that pass through it.
+
+  Arguments are:
+
+  - arachne-id (optional): The Arachne ID of the component
+  - ctor (mandatory): the fully-qualified symbol of a function that, when invoked and passed the
+    initialized component instance will return a transducer over FileSets.
+
+    Returns the entity ID of the newly created component."
+  (s/cat :arachne-id (s/? ::core/arachne-id)
+         :constructor ::constructor)
+  [<arachne-id> ctor]
+  (let [tid (cfg/tempid)
+        entity (util/mkeep
+                 {:db/id tid
+                  :arachne/id (:arachne-id &args)
+                  :arachne.component/constructor :arachne.assets.pipeline/transducer
+                  :arachne.assets.transducer/constructor (keyword (:constructor &args))})]
+    (script/transact [entity] tid)))
 
 (defn- wire
   "Given a tuple containing [producer-eid consumer-eid roles], return an entity map that links them up"
@@ -98,32 +98,28 @@
    :arachne.assets.consumer/inputs [(util/mkeep {:arachne.assets.input/entity producer
                                                  :arachne.assets.input/roles roles})]})
 
-(s/def ::ref (s/or :aid ::acs/id
-                   :eid #(or (integer? %) (instance? arachne.core.config.Tempid %))))
+(s/def ::roles (s/coll-of keyword? :min-count 1))
 
-(s/def ::roles (s/coll-of keyword? :kind set? :min-count 1))
-
-(s/def ::pipeline-tuple (s/cat :producer ::ref :consumer ::ref :roles (s/? ::roles)))
-
-(s/def ::pipeline-tuples (s/coll-of ::pipeline-tuple :min-count 1))
-(s/fdef pipeline :args ::pipeline-tuples)
-
-(defn- resolve-aid
-  "Given the conformed value of a reference, assert that the entity actually exists in the context
-   config, returning the entities eid."
-  [[type id]]
-  (case type
-    :eid id
-    :aid (script/resolve-aid id `pipeline)))
+(s/def ::pipeline-tuple (s/cat :producer ::core/ref :consumer ::core/ref :roles (s/? ::roles)))
 
 (defdsl pipeline
-  "Wire together pipeline elements into a directed graph. Takes a number of pair tuples, each item
-   in the tuple must be either an Arachne ID or an entity ID.
+  "Wire together asset pipeline components into a directed graph, structuring the flow of assets through the pipeline.
 
-  A simple tuple of the form [A B] indicates that A is an input of B."
+   The arguments are any number of tuples. The structure of each tuple is:
+
+   [<producer> <consumer> <roles?>]
+
+   <producer> and <consumer> may be Arachne IDs or entity IDs.
+
+   In every tuple, <producer> and <consumer> are mandatory, <roles> is optional.
+
+   Each tuple establishes a producer/consumer relationship between the pipeline components, and
+   (if roles are present) specifies the role of the producer to the consumer, which is required by
+   some consumers."
+  (s/coll-of ::pipeline-tuple :min-count 1)
   [& tuples]
-  (let [conformed (s/conform ::pipeline-tuples tuples)
-        tuples (map (fn [{:keys [producer consumer roles]}]
-                      [(resolve-aid producer) (resolve-aid consumer) roles]) conformed)
+  (let [tuples (map (fn [{:keys [producer consumer roles]}]
+                      [(core/resolved-ref producer) (core/resolved-ref consumer) (set roles)])
+                 &args)
         txdata (map wire tuples)]
     (script/transact txdata)))

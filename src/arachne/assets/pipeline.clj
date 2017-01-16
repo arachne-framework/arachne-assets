@@ -48,7 +48,10 @@
   c/Lifecycle
   (start [this]
     (let [path (:arachne.assets.input-directory/path this)
-          ch (watch-dir (io/file path))
+          file (if (:arachne.assets.input-directory/classpath? this)
+                 (io/file (io/resource path))
+                 (io/file path))
+          ch (watch-dir file)
           dist (autil/dist ch)]
       (assoc this :output-ch ch :dist dist :terminate-fn terminate-fn)))
   (stop [this]
@@ -62,7 +65,10 @@
   (start [this]
     (let [ch (a/chan)
           path (:arachne.assets.input-directory/path this)
-          fs (fs/add (fs/fileset) (io/file path))
+          file (if (:arachne.assets.input-directory/classpath? this)
+                 (io/file (io/resource path))
+                 (io/file path))
+          fs (fs/add (fs/fileset) file)
           dist (autil/dist ch)]
       (log/debug "Processing asset pipeline input:" path)
       (>!! ch fs)

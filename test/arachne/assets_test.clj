@@ -18,31 +18,54 @@
 
   (a/runtime :test/rt [:test/output])
 
-  (aa/input-dir :test/input :dir "test/test-assets")
-  (aa/output-dir :test/output :dir output-path)
+  (aa/input-dir :test/input "test/test-assets")
+  (aa/output-dir :test/output output-path)
 
   (aa/pipeline [:test/input :test/output]))
 
+(defn input-output-cfg-resource
+  [output-path]
+
+  (a/runtime :test/rt [:test/output])
+
+  (aa/input-dir :test/input "test-assets" :classpath? true)
+  (aa/output-dir :test/output output-path)
+
+  (aa/pipeline [:test/input :test/output]))
+
+(defn input-output-cfg-eids
+  [output-path]
+
+  (def input (aa/input-dir "test/test-assets"))
+  (def output (aa/output-dir output-path))
+
+  (a/runtime :test/rt [output])
+
+  (aa/pipeline [input output]))
+
 (deftest input-output-test
   (let [output-dir (.getCanonicalPath (tmpdir/tmpdir!))
-        cfg (core/build-config [:org.arachne-framework/arachne-assets]
-              `(arachne.assets-test/input-output-cfg ~output-dir))
-        rt (core/runtime cfg :test/rt)
-        rt (c/start rt)]
-    (is (= #{"file1.md" "file2.md" "file3.md"}
-          (->> (file-seq (io/file output-dir))
-            (filter #(.isFile %))
-            (map #(.getName %))
-            (set))))
-    (c/stop rt)))
+        scripts [`(arachne.assets-test/input-output-cfg ~output-dir)
+                 `(arachne.assets-test/input-output-cfg-resource ~output-dir)
+                 `(arachne.assets-test/input-output-cfg-eids ~output-dir)]]
+    (doseq [script scripts]
+      (let [cfg (core/build-config [:org.arachne-framework/arachne-assets] script)
+            rt (core/runtime cfg :test/rt)
+            rt (c/start rt)]
+        (is (= #{"file1.md" "file2.md" "file3.md"}
+              (->> (file-seq (io/file output-dir))
+                (filter #(.isFile %))
+                (map #(.getName %))
+                (set))))
+        (c/stop rt)))))
 
 (defn watcher-cfg
   [input-path output-path]
 
   (a/runtime :test/rt [:test/output])
 
-  (aa/input-dir :test/input :dir input-path :watch? true)
-  (aa/output-dir :test/output :dir output-path)
+  (aa/input-dir :test/input input-path :watch? true)
+  (aa/output-dir :test/output output-path)
 
   (aa/pipeline [:test/input :test/output]))
 
@@ -90,9 +113,9 @@
 
   (a/runtime :test/rt [:test/output-a :test/output-b])
 
-  (aa/input-dir :test/input :dir "test/test-assets")
-  (aa/output-dir :test/output-a :dir output-path-a)
-  (aa/output-dir :test/output-b :dir output-path-b)
+  (aa/input-dir :test/input "test/test-assets")
+  (aa/output-dir :test/output-a output-path-a)
+  (aa/output-dir :test/output-b output-path-b)
 
   (aa/pipeline
     [:test/input :test/output-a]
@@ -134,11 +157,9 @@
 
   (a/runtime :test/rt [:test/output])
 
-  (a/component :test/test-transform {} `arachne.assets-test/test-transformer)
-
-  (aa/input-dir :test/input :dir "test/test-assets")
-  (aa/transducer :test/xform :constructor 'arachne.assets-test/transducer-ctor)
-  (aa/output-dir :test/output :dir output-path)
+  (aa/input-dir :test/input "test/test-assets")
+  (aa/transducer :test/xform `transducer-ctor)
+  (aa/output-dir :test/output output-path)
 
   (aa/pipeline
     [:test/input :test/xform]
@@ -161,9 +182,9 @@
 
   (a/runtime :test/rt [:test/output])
 
-  (aa/input-dir :test/input-a :dir input-a-path)
-  (aa/input-dir :test/input-b :dir input-b-path)
-  (aa/output-dir :test/output :dir output-path)
+  (aa/input-dir :test/input-a input-a-path)
+  (aa/input-dir :test/input-b input-b-path)
+  (aa/output-dir :test/output output-path)
 
   (aa/pipeline [:test/input-a :test/output #{:role-1}]
                [:test/input-b :test/output #{:role-2}]))
