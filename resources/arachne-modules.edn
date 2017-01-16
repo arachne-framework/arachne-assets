@@ -1,4 +1,4 @@
 [{:arachne.module/name :org.arachne-framework/arachne-assets
   :arachne.module/schema arachne.assets/schema
   :arachne.module/configure arachne.assets/configure
-  :arachne.module/dependencies [:org.arachne-framework/arachne-core]}]
+  :arachne.module/dependencies [:org.arachne-framework/arachne-http]}]

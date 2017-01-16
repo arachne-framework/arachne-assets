@@ -9,8 +9,15 @@
             [clojure.java.io :as io]
             [arachne.core.util :as util]
             [hawk.core :as hawk]
-            [arachne.error :as e :refer [error deferror]])
-  (:import [java.util.concurrent LinkedBlockingQueue TimeUnit]))
+            [arachne.error :as e :refer [error deferror]]
+            [arachne.http :as http]
+            [arachne.http.config :as http-cfg]
+            [ring.middleware.file-info :as file-info]
+            [ring.util.mime-type :as mime]
+            [ring.util.response :as res]
+            [clojure.string :as str])
+  (:import [java.util.concurrent LinkedBlockingQueue TimeUnit]
+           [java.net URI]))
 
 (defprotocol Transformer
   "A component that translates from multiple input channels to a single output channel."
@@ -77,6 +84,14 @@
     (a/close! output-ch)
     (dissoc this :output-ch :dist)))
 
+
+(defn input-directory
+  "Constructor for an :arachne.assets/InputDirectory component"
+  [entity]
+  (if (:arachne.assets.input-directory/watch? entity)
+    (map->WatchingInputDir {})
+    (map->InputDir {})))
+
 (defn input-channels
   "Given a Consumer component instance, calls `-observe` on each of the inputs and return a seq of
    [<chan> <roles>] tuples for all the component's inputs."
@@ -119,26 +134,28 @@
               (recur)))))
       output)))
 
-(defrecord OutputDir [dist]
-  Producer
-  (-observe [_] (a/tap dist (a/chan (a/sliding-buffer 1))))
+(defrecord OutputDir []
   c/Lifecycle
   (start [this]
     (let [input-ch (merge-inputs (map first (input-channels this)))
-          dist (autil/dist input-ch)
           path (:arachne.assets.output-directory/path this)
           output-file (io/file path)
           receive (fn [fs]
                     (when fs
                       (locking this
                         (log/debug "Processing asset pipeline output:" path)
-                        (fs/commit! fs output-file))))
-          receive-ch (a/tap dist (a/chan (a/sliding-buffer 1)))]
+                        (fs/commit! fs output-file))))]
       (.mkdirs output-file)
-      (receive (<!! receive-ch))
-      (go (while (receive (<! receive-ch))))
-      (assoc this :dist dist)))
+      (receive (<!! input-ch))
+      (go (while (receive (<! input-ch))))
+      this))
   (stop [this] this))
+
+
+(defn output-directory
+  "Constructor for an :arachne.assets/OutputDirectory component"
+  [cfg eid]
+  (map->OutputDir {}))
 
 
 (deferror ::transduce-failed
@@ -174,19 +191,43 @@
       (assoc this :dist dist)))
   (stop [this] this))
 
-(defn input-directory
-  "Constructor for an :arachne.assets/InputDirectory component"
-  [entity]
-  (if (:arachne.assets.input-directory/watch? entity)
-    (map->WatchingInputDir {})
-    (map->InputDir {})))
-
-(defn output-directory
-  "Constructor for an :arachne.assets/OutputDirectory component"
-  [cfg eid]
-  (map->OutputDir {}))
-
 (defn transducer
   "Constructor for an :arachne.assets/Transducer component"
   [cfg eid]
   (map->Transducer {}))
+
+(defn- endpoint-uri
+  "Return a java.net.URI for this endpoint relative to its position in the routing tree"
+  [component]
+  (URI. (http-cfg/route-path (:arachne/config component) (:db/id component))))
+
+(defrecord HttpHandler [state uri]
+
+  http/Handler
+  (handle [this req]
+    (let [path (str (.relativize ^URI uri (URI. (:uri req))))
+          path (if (str/blank? path) "index.html" path)
+          file (fs/file @state path)
+          mime-type (mime/ext-mime-type path)]
+      (when file
+        (let [resp (file-info/file-info-response {:status 200
+                                                  :body file} req)]
+          (if mime-type
+            (res/content-type resp mime-type)
+            resp)))))
+
+  c/Lifecycle
+  (start [this]
+    (let [input-ch (merge-inputs (map first (input-channels this)))
+          state (atom (<!! input-ch))]
+      (go-loop []
+        (when-let [fs (<! input-ch)]
+          (reset! state fs)
+          (recur)))
+      (assoc this :state state :uri (endpoint-uri this))))
+  (stop [this] (dissoc this :state)))
+
+(defn http-handler
+  "Constructor for an http handler pipeline consumer"
+  []
+  (map->HttpHandler {}))

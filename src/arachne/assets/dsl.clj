@@ -123,3 +123,19 @@
                  &args)
         txdata (map wire tuples)]
     (script/transact txdata)))
+
+(defdsl http
+  "Define a consumer component that exposes its input via HTTP.
+
+  Arguments are:
+
+  arachne-id (optional): The arachne ID of the component
+
+  Returns the entity ID of the newly-created component."
+  (s/cat :arachne-id (s/? ::core/arachne-id))
+  [<arachne-id>]
+  (let [tid (cfg/tempid)
+        entity (util/mkeep {:db/id tid
+                            :arachne.component/constructor :arachne.assets.pipeline/http-handler
+                            :arachne/id (:arachne-id &args)})]
+    (script/transact [entity] tid)))

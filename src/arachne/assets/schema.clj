@@ -35,7 +35,7 @@
       (m/attr :arachne.assets.input-directory/exclude :many :string
         "If present, do not include files that match this regex."))
 
-    (m/type :arachne.assets/OutputDirectory [:arachne.assets/Consumer :arachne.assets/Producer]
+    (m/type :arachne.assets/OutputDirectory [:arachne.assets/Consumer]
       "A Consumer that persists a fileset to a location on the File System"
       (m/attr :arachne.assets.output-directory/path :one :string
         "The process-relative path to which to persist the files."))
