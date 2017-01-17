@@ -199,33 +199,40 @@
 (defn- endpoint-uri
   "Return a java.net.URI for this endpoint relative to its position in the routing tree"
   [component]
-  (URI. (http-cfg/route-path (:arachne/config component) (:db/id component))))
+  (http-cfg/route-path (:arachne/config component) (:db/id component)))
 
-(defrecord HttpHandler [state uri]
+(defn fs-chan-handler
+  "Given a channel upon which will be placed filesets, return a Ring handler function serving
+   files from the most recent fileset recieved."
+  [ch root]
+  (let [root-uri (URI. root)
+        state (atom (<!! ch))]
+    (go-loop []
+      (when-let [fs (<! ch)]
+        (reset! state fs)
+        (recur)))
+    (fn [req]
+      (let [path (str (.relativize ^URI root-uri (URI. (:uri req))))
+            path (if (str/blank? path) "index.html" path)
+            file (fs/file @state path)
+            mime-type (mime/ext-mime-type path)]
+        (when file
+          (let [resp (file-info/file-info-response {:status 200
+                                                    :body file} req)]
+            (if mime-type
+              (res/content-type resp mime-type)
+              resp)))))))
 
+(defrecord HttpHandler [handler]
   http/Handler
   (handle [this req]
-    (let [path (str (.relativize ^URI uri (URI. (:uri req))))
-          path (if (str/blank? path) "index.html" path)
-          file (fs/file @state path)
-          mime-type (mime/ext-mime-type path)]
-      (when file
-        (let [resp (file-info/file-info-response {:status 200
-                                                  :body file} req)]
-          (if mime-type
-            (res/content-type resp mime-type)
-            resp)))))
-
+    (handler req))
   c/Lifecycle
   (start [this]
     (let [input-ch (merge-inputs (map first (input-channels this)))
-          state (atom (<!! input-ch))]
-      (go-loop []
-        (when-let [fs (<! input-ch)]
-          (reset! state fs)
-          (recur)))
-      (assoc this :state state :uri (endpoint-uri this))))
-  (stop [this] (dissoc this :state)))
+          handler (fs-chan-handler input-ch (endpoint-uri this))]
+      (assoc this :handler handler)))
+  (stop [this] (dissoc this :handler)))
 
 (defn http-handler
   "Constructor for an http handler pipeline consumer"
