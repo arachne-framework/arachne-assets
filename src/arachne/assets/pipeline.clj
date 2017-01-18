@@ -4,7 +4,7 @@
             [arachne.assets.config :as acfg]
             [arachne.assets.util :as autil]
             [com.stuartsierra.component :as c]
-            [clojure.tools.logging :as log]
+            [arachne.log :as log]
             [clojure.core.async :as a :refer [go go-loop >! <! <!! >!!]]
             [clojure.java.io :as io]
             [arachne.core.util :as util]
@@ -36,14 +36,17 @@
    whenever the contents of the directory change, a fileset will be placed on the channel until the
    terminate function is called."
   [dir]
-  (let [ch (a/chan (a/sliding-buffer 1))
+  (let [path (.getPath dir)
+        ch (a/chan (a/sliding-buffer 1))
         watcher-atom (atom nil)
         on-change (fn [evt ctx]
+                    (log/debug :msg "Change in watched directory" :path path)
                     (when-not (>!! ch (fs/add (fs/fileset) dir))
+                      (log/debug :msg "Terminating directory watch due to closed channel" :path path)
                       (when-let [watcher @watcher-atom]
                         (hawk/stop! watcher)))
                     ctx)]
-    (reset! watcher-atom (hawk/watch! [{:paths [(.getPath dir)]
+    (reset! watcher-atom (hawk/watch! [{:paths [path]
                                         :filter hawk/file?
                                         :handler on-change}]))
     (on-change nil nil)
@@ -77,7 +80,7 @@
                  (io/file path))
           fs (fs/add (fs/fileset) file)
           dist (autil/dist ch)]
-      (log/debug "Processing asset pipeline input:" path)
+      (log/debug :msg "Processing asset input dir" :path path)
       (>!! ch fs)
       (assoc this :output-ch ch :dist dist)))
   (stop [this]
@@ -143,7 +146,7 @@
           receive (fn [fs]
                     (when fs
                       (locking this
-                        (log/debug "Processing asset pipeline output:" path)
+                        (log/debug :msg "Procesing asset output dir" :path path)
                         (fs/commit! fs output-file))))]
       (.mkdirs output-file)
       (receive (<!! input-ch))
@@ -203,7 +206,10 @@
 
 (defn fs-chan-handler
   "Given a channel upon which will be placed filesets, return a Ring handler function serving
-   files from the most recent fileset recieved."
+   files from the most recent fileset recieved.
+
+   Already has data from the file-info middleware, since that cannot be calculated from the
+   returned blob file."
   [ch root]
   (let [root-uri (URI. root)
         state (atom (<!! ch))]

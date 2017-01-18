@@ -44,7 +44,7 @@
   (aa/pipeline [input output]))
 
 (deftest input-output-test
-  (let [output-dir (.getCanonicalPath (tmpdir/tmpdir!))
+  (let [output-dir (.getPath (tmpdir/tmpdir!))
         scripts [`(arachne.assets-test/input-output-cfg ~output-dir)
                  `(arachne.assets-test/input-output-cfg-resource ~output-dir)
                  `(arachne.assets-test/input-output-cfg-eids ~output-dir)]]
