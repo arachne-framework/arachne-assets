@@ -5,7 +5,7 @@
  :deps [[org.clojure/clojure "1.9.0-alpha14" :scope "provided"]
         [org.clojure/core.async "0.2.395"
          :exclusions [org.clojure/clojure]]
-        [org.arachne-framework/arachne-http "0.1.0-master-0049-6acc7af"
+        [org.arachne-framework/arachne-http "0.1.0-master-0050-35773a9"
          :exclusions [org.clojure/data.priority-map
                       org.clojure/tools.reader
                       commons-codec]]
