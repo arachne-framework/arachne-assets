@@ -5,7 +5,7 @@
  :deps [[org.clojure/clojure "1.9.0-alpha14" :scope "provided"]
         [org.clojure/core.async "0.2.395"
          :exclusions [org.clojure/clojure]]
-        [org.arachne-framework/arachne-http "0.1.0-master-0050-35773a9"
+        [org.arachne-framework/arachne-core "0.1.0-master-0082-6380356"
          :exclusions [org.clojure/data.priority-map
                       org.clojure/tools.reader
                       commons-codec]]
@@ -26,10 +26,7 @@
                       org.slf4j/log4j-over-slf4j
                       org.slf4j/jcl-over-slf4j
                       org.slf4j/jul-to-slf4j
-                      org.clojure/clojure
-                      commons-codec]
+                      org.clojure/clojure]
          :scope "test"]
         [ch.qos.logback/logback-classic "1.1.3" :scope "test"
-         :exclusions [org.slf4j/slf4j-api]]
-        [clj-http "2.2.0" :scope "test"
-         :exclusions [commons-io]]]}
+         :exclusions [org.slf4j/slf4j-api]]]}
