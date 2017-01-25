@@ -10,6 +10,11 @@
             [arachne.core.util :as util]
             [hawk.core :as hawk]
             [arachne.error :as e :refer [error deferror]]
+            [arachne.http :as http]
+            [arachne.http.config :as http-cfg]
+            [ring.middleware.file-info :as file-info]
+            [ring.util.mime-type :as mime]
+            [ring.util.response :as res]
             [clojure.string :as str])
   (:import [java.util.concurrent LinkedBlockingQueue TimeUnit]
            [java.net URI]))
@@ -155,6 +160,7 @@
   [cfg eid]
   (map->OutputDir {}))
 
+
 (deferror ::transduce-failed
   :message "Transducer failed failed in asset Transducer with :eid (Arachne ID: :aid)."
   :explanation "An asset pipeline transducer with eid `:eid` and Arachne ID `:aid` threw an exception during pipeline processing.
@@ -192,3 +198,50 @@
   "Constructor for an :arachne.assets/Transducer component"
   [cfg eid]
   (map->Transducer {}))
+
+(defn- endpoint-uri
+  "Return a java.net.URI for this endpoint relative to its position in the routing tree"
+  [component]
+  (let [route (:db/id (:arachne.http.endpoint/route component))]
+    (http-cfg/route-path (:arachne/config component) route)))
+
+(defn fs-chan-handler
+  "Given a channel upon which will be placed filesets, return a Ring handler function serving
+   files from the most recent fileset recieved.
+
+   Already has data from the file-info middleware, since that cannot be calculated from the
+   returned blob file."
+  [ch root]
+  (let [root-uri (URI. root)
+        state (atom (<!! ch))]
+    (go-loop []
+      (when-let [fs (<! ch)]
+        (reset! state fs)
+        (recur)))
+    (fn [req]
+      (let [path (str (.relativize ^URI root-uri (URI. (:uri req))))
+            path (if (str/blank? path) "index.html" path)
+            file (fs/file @state path)
+            mime-type (mime/ext-mime-type path)]
+        (when file
+          (let [resp (file-info/file-info-response {:status 200
+                                                    :body file} req)]
+            (if mime-type
+              (res/content-type resp mime-type)
+              resp)))))))
+
+(defrecord HttpHandler [handler]
+  http/Handler
+  (handle [this req]
+    (handler req))
+  c/Lifecycle
+  (start [this]
+    (let [input-ch (merge-inputs (map first (input-channels this)))
+          handler (fs-chan-handler input-ch (endpoint-uri this))]
+      (assoc this :handler handler)))
+  (stop [this] (dissoc this :handler)))
+
+(defn http-handler
+  "Constructor for an http handler pipeline consumer"
+  []
+  (map->HttpHandler {}))
