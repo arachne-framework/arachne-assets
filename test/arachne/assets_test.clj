@@ -8,9 +8,11 @@
             [com.stuartsierra.component :as c]
             [clojure.string :as str]
             [clojure.java.io :as io]
-
+            [arachne.assets.pipeline :as pipeline]
             [arachne.core.dsl :as a]
-            [arachne.assets.dsl :as aa])
+            [arachne.core.runtime :as rt]
+            [arachne.assets.dsl :as aa]
+            [arachne.assets.pipeline :as p])
   (:import [java.io FileNotFoundException]))
 
 (defn input-output-cfg
@@ -220,3 +222,47 @@
     (is (= "file3" (slurp (io/file output-dir "file3.md"))))
 
     (c/stop rt)))
+
+(defn fsview-cfg
+  [input-dir]
+
+  (a/runtime :test/rt [:test/fsview])
+
+  (aa/input-dir :test/input input-dir)
+
+  (a/transact [{:arachne/id :test/fsview
+                :arachne.component/constructor :arachne.assets.pipeline/fileset-view}])
+
+  (aa/pipeline [:test/input :test/fsview]))
+
+(defn- prep-input-dir []
+  (let [dir (fs/tmpdir!)]
+    (.mkdir (io/file dir "a"))
+    (spit (io/file dir "index.html") "<div>index</div>")
+    (spit (io/file dir "a/test.html") "<div>a</div>")
+    (.getPath dir)))
+
+(deftest fsview-test
+  (let [input-path (prep-input-dir)
+        cfg (core/build-config [:org.arachne-framework/arachne-assets]
+              `(fsview-cfg ~input-path))
+        rt (core/runtime cfg :test/rt)
+        rt (c/start rt)
+        fsview (rt/lookup rt [:arachne/id :test/fsview])]
+
+    (testing "basic file"
+      (is (= "<div>index</div>" (slurp (p/find-file fsview "index.html"))))
+      (is (= "<div>a</div>" (slurp (p/find-file fsview "a/test.html")))))
+
+    (testing "ring responses"
+      (let [r (assets/ring-response fsview {:uri "a/test.html" :headers {}} "/" true)]
+        (is (= "<div>a</div>" (slurp (:body r))))
+        (is (= "text/html" (get-in r [:headers "Content-Type"]))))
+
+      (let [r (assets/ring-response fsview {:uri "/foo/bar/baz/a/test.html" :headers {}} "/foo/bar/baz" true)]
+        (is (= "<div>a</div>" (slurp (:body r))))
+        (is (= "text/html" (get-in r [:headers "Content-Type"]))))
+
+      (let [r (assets/ring-response fsview {:uri "/foo/bar/baz" :headers {}} "/foo/bar/baz" true)]
+        (is (= "<div>index</div>" (slurp (:body r))))
+        (is (= "text/html" (get-in r [:headers "Content-Type"])))))))
