@@ -35,7 +35,7 @@
   [fsview request rel-path index?]
   (let [path (str (.relativize (URI. rel-path) (URI. (:uri request))))]
     (if-let [f (p/find-file fsview path)]
-      (-> {:stats 200 :body f}
+      (-> (res/response f)
         (file-info/file-info-response request)
         (res/content-type (or (mime/ext-mime-type path)
                             "application/octet-stream")))

@@ -255,6 +255,10 @@
       (is (= "<div>a</div>" (slurp (p/find-file fsview "a/test.html")))))
 
     (testing "ring responses"
+      (let [r (assets/ring-response fsview {:uri "/" :headers {}} "/" true)]
+        (is (= "<div>index</div>" (slurp (:body r))))
+        (is (= "text/html" (get-in r [:headers "Content-Type"]))))
+
       (let [r (assets/ring-response fsview {:uri "a/test.html" :headers {}} "/" true)]
         (is (= "<div>a</div>" (slurp (:body r))))
         (is (= "text/html" (get-in r [:headers "Content-Type"]))))
