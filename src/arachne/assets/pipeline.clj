@@ -198,12 +198,13 @@
   "A pipeline component that presents a view to the current fileset"
   (find-file [this path] "Returns a java.io.File object for the file at the given path in the fileset, or nil if such a file does not exist. The returned file is immutable."))
 
-(defrecord FSViewComponent [state]
+(defrecord FSViewComponent [state inputs]
   FSView
   (find-file [this path] (fs/file @state path))
   c/Lifecycle
   (start [this]
-    (let [input-ch (merge-inputs (map first (input-channels this)))
+    (let [inputs (or inputs (map first (input-channels this)))
+          input-ch (merge-inputs inputs)
           state (atom (<!! input-ch))]
       (go-loop []
         (when-let [fs (<! input-ch)]
