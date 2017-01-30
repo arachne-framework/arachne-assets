@@ -10,8 +10,6 @@
             [arachne.core.util :as util]
             [hawk.core :as hawk]
             [arachne.error :as e :refer [error deferror]]
-            [arachne.http :as http]
-            [arachne.http.config :as http-cfg]
             [clojure.string :as str])
   (:import [java.util.concurrent LinkedBlockingQueue TimeUnit]
            [java.net URI]))
@@ -195,12 +193,6 @@
   "Constructor for an :arachne.assets/Transducer component"
   [cfg eid]
   (map->Transducer {}))
-
-(defn- endpoint-uri
-  "Return a java.net.URI for this endpoint relative to its position in the routing tree"
-  [component]
-  (let [route (:db/id (:arachne.http.endpoint/route component))]
-    (http-cfg/route-path (:arachne/config component) route)))
 
 (defprotocol FSView
   "A pipeline component that presents a view to the current fileset"
