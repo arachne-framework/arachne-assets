@@ -270,3 +270,25 @@
       (let [r (assets/ring-response fsview {:uri "/foo/bar/baz" :headers {}} "/foo/bar/baz" true)]
         (is (= "<div>index</div>" (slurp (:body r))))
         (is (= "text/html" (get-in r [:headers "Content-Type"])))))))
+
+(defn jar-cfg
+  [output-path]
+
+  (a/runtime :test/rt [:test/output])
+
+  (aa/input-dir :test/input "clojure/java" :classpath? true)
+  (aa/output-dir :test/output output-path)
+
+  (aa/pipeline
+    [:test/input :test/output]))
+
+(deftest jar-test
+  (let [output-dir (tmpdir/tmpdir!)
+        cfg (core/build-config [:org.arachne-framework/arachne-assets]
+              `(arachne.assets-test/jar-cfg ~(.getPath output-dir)))
+        rt (core/runtime cfg :test/rt)
+        rt (c/start rt)]
+
+
+    (is (re-find #"Rich Hickey" (slurp (io/file output-dir "io.clj"))))
+    (c/stop rt)))

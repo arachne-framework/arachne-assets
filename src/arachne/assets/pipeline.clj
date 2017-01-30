@@ -12,7 +12,8 @@
             [arachne.error :as e :refer [error deferror]]
             [clojure.string :as str])
   (:import [java.util.concurrent LinkedBlockingQueue TimeUnit]
-           [java.net URI]))
+           [java.net URI]
+           (java.nio.file FileSystem FileSystems Files Paths CopyOption OpenOption)))
 
 (defprotocol Transformer
   "A component that translates from multiple input channels to a single output channel."
@@ -47,6 +48,34 @@
     (on-change nil nil)
     ch))
 
+(deferror ::cannot-watch-jar
+  :message "Cannot watch path in JAR file for pipeline input `:eid` (Arachne ID: `:aid`)"
+  :explanation "An input component with entity ID `:eid` and Arachne ID `:aid` was instructed to watch the directory `:path` on the classpath for any changes.
+
+   However, that classpath location resolved to `:url-path`, which is in a JAR file.
+
+   Jar files cannot be watched (nor would it be meaningful to do so, as their contents cannot change at runtime.)"
+  :suggestions ["Set `:watch?` to false for this input component"
+                "Watch a directory that is not in a JAR file"]
+  :ex-data-docs {:eid "The entity id of the input"
+                 :aid "The arachne ID of the input"
+                 :path "The path specified in the config"
+                 :url-path "The actual resolved path"})
+
+(deferror ::path-not-found
+  :message "Path `:path` not found"
+  :explanation "An input component with entity ID `:eid` and Arachne ID `:aid` was specified to load resources from `:path`.
+
+   The component attempted to find the directory :location. However, no such diretory could be found."
+  :suggestions ["Ensure that the input component refers to an existing directory, with no typos"]
+  :ex-data-docs {:eid "The entity id of the input"
+                 :aid "The arachne ID of the input"
+                 :path "The path specified in the config"})
+
+(defn- jar-url?
+  [url]
+  (= "jar" (.getProtocol url)))
+
 (defrecord WatchingInputDir [dist output-ch terminate-fn]
   Producer
   (-observe [_] (a/tap dist (a/chan (a/sliding-buffer 1))))
@@ -54,7 +83,12 @@
   (start [this]
     (let [path (:arachne.assets.input-directory/path this)
           file (if (:arachne.assets.input-directory/classpath? this)
-                 (io/file (io/resource path))
+                 (let [url (io/resource path)]
+                   (when (jar-url? url) (error ::cannot-watch-jar {:aid (:arachne/id this)
+                                                                   :eid (:db/id this)
+                                                                   :path path
+                                                                   :url-path (.getPath url)}))
+                   (io/file url))
                  (io/file path))
           ch (watch-dir file)
           dist (autil/dist ch)]
@@ -63,6 +97,20 @@
     (a/close! output-ch)
     (dissoc this :watcher :output-ch)))
 
+(defn- classpath-fileset
+  "Load a fileset from the classpath (including a JAR)"
+  [component path]
+  (let [url (io/resource path)]
+    (when-not url
+      (error ::path-not-found {:aid (:arachne/id component)
+                               :eid (:db/id component)
+                               :path path
+                               :location "on the classpath"}))
+    (if (jar-url? url)
+      (with-open [fs (FileSystems/newFileSystem (.toURI url) {})]
+        (fs/add (fs/fileset) (.toAbsolutePath (.getPath fs path (into-array String [])))))
+      (fs/add (fs/fileset) (io/file url)))))
+
 (defrecord InputDir [dist output-ch]
   Producer
   (-observe [_] (a/tap dist (a/chan (a/sliding-buffer 1))))
@@ -70,10 +118,14 @@
   (start [this]
     (let [ch (a/chan)
           path (:arachne.assets.input-directory/path this)
-          file (if (:arachne.assets.input-directory/classpath? this)
-                 (io/file (io/resource path))
-                 (io/file path))
-          fs (fs/add (fs/fileset) file)
+          fs (if (:arachne.assets.input-directory/classpath? this)
+                 (classpath-fileset this path)
+                 (if-let [f (io/file path)]
+                   (fs/add (fs/fileset) f)
+                   (error ::path-not-found {:aid (:arachne/id this)
+                                            :eid (:db/id this)
+                                            :path path
+                                            :location "relative to the process directory"})))
           dist (autil/dist ch)]
       (log/debug :msg "Processing asset input dir" :path path)
       (>!! ch fs)
@@ -81,7 +133,6 @@
   (stop [this]
     (a/close! output-ch)
     (dissoc this :output-ch :dist)))
-
 
 (defn input-directory
   "Constructor for an :arachne.assets/InputDirectory component"
