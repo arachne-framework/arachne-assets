@@ -62,6 +62,21 @@
                  :path "The path specified in the config"
                  :url-path "The actual resolved path"})
 
+(deferror ::cannot-watch-multiple-paths
+  :message "Cannot watch multiple concrete directories on classpath for pipeline input `:eid` (Arachne ID: `:aid`)"
+  :explanation "An input component with entity ID `:eid` and Arachne ID `:aid` was instructed to watch the directory `:path` on the classpath for any changes.
+
+   However, that path resolves to :urls-count locations on the classpath.
+
+   Arachne does not currently support classpath inputs that attempt to watch multiple directories at the same time."
+  :suggestions ["Set `:watch?` to false for this input component"
+                "Watch a different path that resolves to only one directory."]
+  :ex-data-docs {:eid "The entity id of the input"
+                 :aid "The arachne ID of the input"
+                 :path "The path specified in the config"
+                 :urls "The URLs that were resolved"
+                 :url-count "How many classpath resources were found at the path"})
+
 (deferror ::path-not-found
   :message "Path `:path` not found"
   :explanation "An input component with entity ID `:eid` and Arachne ID `:aid` was specified to load resources from `:path`.
@@ -76,6 +91,11 @@
   [url]
   (= "jar" (.getProtocol url)))
 
+(defn- resources
+  "Return a seq of all the URLS on the classpath at a particular path"
+  [path]
+  (enumeration-seq (.getResources (.getContextClassLoader (Thread/currentThread)) path)))
+
 (defrecord WatchingInputDir [dist output-ch terminate-fn]
   Producer
   (-observe [_] (a/tap dist (a/chan (a/sliding-buffer 1))))
@@ -83,12 +103,24 @@
   (start [this]
     (let [path (:arachne.assets.input-directory/path this)
           file (if (:arachne.assets.input-directory/classpath? this)
-                 (let [url (io/resource path)]
-                   (when (jar-url? url) (error ::cannot-watch-jar {:aid (:arachne/id this)
-                                                                   :eid (:db/id this)
-                                                                   :path path
-                                                                   :url-path (.getPath url)}))
-                   (io/file url))
+                 (let [urls (resources path)]
+                   (when (empty? urls)
+                     (error ::path-not-found {:aid (:arachne/id this)
+                                              :eid (:db/id this)
+                                              :path path
+                                              :location "on the classpath"}))
+                   (when (not= 1 (count urls))
+                     (error ::cannot-watch-multiple-paths {:aid (:arachne/id this)
+                                                           :eid (:db/id this)
+                                                           :path path
+                                                           :urls urls
+                                                           :urls-count (count urls)}))
+                   (let [url (first urls)]
+                     (when (jar-url? url) (error ::cannot-watch-jar {:aid (:arachne/id this)
+                                                                     :eid (:db/id this)
+                                                                     :path path
+                                                                     :url-path (.getPath url)}))
+                     (io/file url)))
                  (io/file path))
           ch (watch-dir file)
           dist (autil/dist ch)]
@@ -98,18 +130,22 @@
     (dissoc this :watcher :output-ch)))
 
 (defn- classpath-fileset
-  "Load a fileset from the classpath (including a JAR)"
+  "Load a fileset from the classpath (including a JAR).
+
+  If there are multiple matching paths, they will be merged into a single fileset."
   [component path]
-  (let [url (io/resource path)]
-    (when-not url
+  (let [urls (resources path)]
+    (when (empty? urls)
       (error ::path-not-found {:aid (:arachne/id component)
                                :eid (:db/id component)
                                :path path
                                :location "on the classpath"}))
-    (if (jar-url? url)
-      (with-open [fs (FileSystems/newFileSystem (.toURI url) {})]
-        (fs/add (fs/fileset) (.toAbsolutePath (.getPath fs path (into-array String [])))))
-      (fs/add (fs/fileset) (io/file url)))))
+    (reduce (fn [fileset url]
+              (if (jar-url? url)
+                (with-open [filesystem (FileSystems/newFileSystem (.toURI url) {})]
+                  (fs/add fileset (.toAbsolutePath (.getPath filesystem path (into-array String [])))))
+                (fs/add fileset (io/file url))))
+      (fs/fileset) urls)))
 
 (defrecord InputDir [dist output-ch]
   Producer

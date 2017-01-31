@@ -13,7 +13,8 @@
             [arachne.core.runtime :as rt]
             [arachne.assets.dsl :as aa]
             [arachne.assets.pipeline :as p])
-  (:import [java.io FileNotFoundException]))
+  (:import [java.io FileNotFoundException]
+           (arachne ArachneException)))
 
 (defn input-output-cfg
   [output-path]
@@ -292,3 +293,68 @@
 
     (is (re-find #"Rich Hickey" (slurp (io/file output-dir "io.clj"))))
     (c/stop rt)))
+
+(defn multijar-cfg
+  [output-path]
+
+  (a/runtime :test/rt [:test/output])
+
+  (aa/input-dir :test/input "clojure/tools" :classpath? true)
+  (aa/output-dir :test/output output-path)
+
+  (aa/pipeline
+    [:test/input :test/output]))
+
+(deftest multijar-test
+  (let [output-dir (tmpdir/tmpdir!)
+        cfg (core/build-config [:org.arachne-framework/arachne-assets]
+              `(arachne.assets-test/multijar-cfg ~(.getPath output-dir)))
+        rt (core/runtime cfg :test/rt)
+        rt (c/start rt)]
+    (is (.exists (io/file output-dir "reader/edn.clj")))
+    (is (.exists (io/file output-dir "namespace.clj")))
+    (c/stop rt)))
+
+(defn multijar-watch-cfg
+  [output-path]
+
+  (a/runtime :test/rt [:test/output])
+
+  (aa/input-dir :test/input "clojure/tools" :classpath? true :watch? true)
+  (aa/output-dir :test/output output-path)
+
+  (aa/pipeline
+    [:test/input :test/output]))
+
+(deftest multijar-watch-test
+  (let [output-dir (tmpdir/tmpdir!)
+        cfg (core/build-config [:org.arachne-framework/arachne-assets]
+              `(arachne.assets-test/multijar-watch-cfg ~(.getPath output-dir)))
+        rt (core/runtime cfg :test/rt)
+        ex (try
+             (c/stop (c/start rt))
+             (catch Exception e e))]
+    (is ex)
+    (is (re-find #"multiple concrete directories" (.getMessage (.getCause ex))))))
+
+(defn jar-watch-cfg
+  [output-path]
+
+  (a/runtime :test/rt [:test/output])
+
+  (aa/input-dir :test/input "clojure/java" :classpath? true :watch? true)
+  (aa/output-dir :test/output output-path)
+
+  (aa/pipeline
+    [:test/input :test/output]))
+
+(deftest jar-watch-test
+  (let [output-dir (tmpdir/tmpdir!)
+        cfg (core/build-config [:org.arachne-framework/arachne-assets]
+              `(arachne.assets-test/jar-watch-cfg ~(.getPath output-dir)))
+        rt (core/runtime cfg :test/rt)
+        ex (try
+             (c/stop (c/start rt))
+             (catch Exception e e))]
+    (is ex)
+    (is (re-find #"watch path in JAR" (.getMessage (.getCause ex))))))
