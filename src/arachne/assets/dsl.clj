@@ -1,4 +1,5 @@
 (ns arachne.assets.dsl
+  "User-facing DSL functions for init scripts"
   (:refer-clojure :exclude [merge])
   (:require [arachne.core.config :as cfg]
             [arachne.core.util :as util]
