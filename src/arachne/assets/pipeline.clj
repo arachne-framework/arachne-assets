@@ -28,25 +28,25 @@
   The returned channel will use a sliding buffer of size 1, so slow consumers of will not delay the producer."))
 
 (defn watch-dir
-  "Given a directory path, return a tuple of [terminatefn- chan]. Immediately, and then
-   whenever the contents of the directory change, a fileset will be placed on the channel until the
-   terminate function is called."
-  [dir]
-  (let [path (.getPath dir)
-        ch (a/chan (a/sliding-buffer 1))
-        watcher-atom (atom nil)
-        on-change (fn [evt ctx]
-                    (log/debug :msg "Change in watched directory" :path path)
-                    (when-not (>!! ch (fs/add (fs/fileset) dir))
-                      (log/debug :msg "Terminating directory watch due to closed channel" :path path)
-                      (when-let [watcher @watcher-atom]
-                        (hawk/stop! watcher)))
-                    ctx)]
-    (reset! watcher-atom (hawk/watch! [{:paths [path]
-                                        :filter hawk/file?
-                                        :handler on-change}]))
-    (on-change nil nil)
-    ch))
+  "Given a directory path, return a channel. Immediately, and thenwhenever the contents of the
+   directory change, a fileset will be placed on the channel until the terminate function is
+   called. Optionally, a channel to use may be passed in."
+  ([dir] (watch-dir dir (a/chan (a/sliding-buffer 1))))
+  ([dir ch]
+   (let [path (.getPath dir)
+         watcher-atom (atom nil)
+         on-change (fn [evt ctx]
+                     (log/debug :msg "Change in watched directory" :path path)
+                     (when-not (>!! ch (fs/add (fs/fileset) dir))
+                       (log/debug :msg "Terminating directory watch due to closed channel" :path path)
+                       (when-let [watcher @watcher-atom]
+                         (hawk/stop! watcher)))
+                     ctx)]
+     (reset! watcher-atom (hawk/watch! [{:paths [path]
+                                         :filter hawk/file?
+                                         :handler on-change}]))
+     (on-change nil nil)
+     ch)))
 
 (deferror ::cannot-watch-jar
   :message "Cannot watch path in JAR file for pipeline input `:eid` (Arachne ID: `:aid`)"
