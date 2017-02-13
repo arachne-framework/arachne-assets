@@ -5,7 +5,7 @@
  :deps [[org.clojure/clojure "1.9.0-alpha14" :scope "provided"]
         [org.clojure/core.async "0.2.395"
          :exclusions [org.clojure/clojure]]
-        [org.arachne-framework/arachne-core "0.1.0-master-0086-c1eddbb"
+        [org.arachne-framework/arachne-core "0.1.0-master-0089-6d40a07"
          :exclusions [org.clojure/data.priority-map]]
         [ring/ring-core "1.5.1"
          :exclusions [org.clojure/clojure
