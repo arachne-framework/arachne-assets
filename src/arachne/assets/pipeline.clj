@@ -35,12 +35,17 @@
   ([dir ch]
    (let [path (.getPath dir)
          watcher-atom (atom nil)
+         prev (volatile! nil)
          on-change (fn [evt ctx]
-                     (log/debug :msg "Change in watched directory" :path path)
-                     (when-not (>!! ch (fs/add (fs/fileset) dir))
-                       (log/debug :msg "Terminating directory watch due to closed channel" :path path)
-                       (when-let [watcher @watcher-atom]
-                         (hawk/stop! watcher)))
+                     (locking prev
+                       (let [fs (fs/add (fs/fileset) dir)]
+                         (when (not= fs @prev)
+                           (vreset! prev fs)
+                           (log/debug :msg "Change in watched directory" :path path :fs-hash (hash fs))
+                           (when-not (>!! ch fs)
+                             (log/debug :msg "Terminating directory watch due to closed channel" :path path)
+                             (when-let [watcher @watcher-atom]
+                               (hawk/stop! watcher))))))
                      ctx)]
      (reset! watcher-atom (hawk/watch! [{:paths [path]
                                          :filter hawk/file?
@@ -126,6 +131,8 @@
           dist (autil/dist ch)]
       (assoc this :output-ch ch :dist dist :terminate-fn terminate-fn)))
   (stop [this]
+    (log/debug :msg "stopping directory watcher component"
+               :path (:arachne.assets.input-directory/path this))
     (a/close! output-ch)
     (dissoc this :watcher :output-ch)))
 
@@ -202,7 +209,7 @@
   [inputs]
   (if (= 1 (count inputs))
     (first inputs)
-    (let [output (a/chan (a/sliding-buffer 1))
+    (let [output (a/chan)
           initial-vals (for [ch inputs]
                          [ch (<!! ch)])
           cache (atom (into {} initial-vals))
