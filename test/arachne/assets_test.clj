@@ -19,20 +19,20 @@
 (defn input-output-cfg
   [output-path]
 
-  (a/runtime :test/rt [:test/output])
+  (a/id :test/rt (a/runtime [:test/output]))
 
-  (aa/input-dir :test/input "test/test-assets")
-  (aa/output-dir :test/output output-path)
+  (a/id :test/input (aa/input-dir "test/test-assets"))
+  (a/id :test/output (aa/output-dir output-path))
 
   (aa/pipeline [:test/input :test/output]))
 
 (defn input-output-cfg-resource
   [output-path]
 
-  (a/runtime :test/rt [:test/output])
+  (a/id :test/rt (a/runtime [:test/output]))
 
-  (aa/input-dir :test/input "test-assets" :classpath? true)
-  (aa/output-dir :test/output output-path)
+  (a/id :test/input (aa/input-dir "test-assets" :classpath? true))
+  (a/id :test/output (aa/output-dir output-path))
 
   (aa/pipeline [:test/input :test/output]))
 
@@ -42,7 +42,7 @@
   (def input (aa/input-dir "test/test-assets"))
   (def output (aa/output-dir output-path))
 
-  (a/runtime :test/rt [output])
+  (a/id :test/rt (a/runtime [output]))
 
   (aa/pipeline [input output]))
 
@@ -65,10 +65,10 @@
 (defn watcher-cfg
   [input-path output-path]
 
-  (a/runtime :test/rt [:test/output])
+  (a/id :test/rt (a/runtime [:test/output]))
 
-  (aa/input-dir :test/input input-path :watch? true)
-  (aa/output-dir :test/output output-path)
+  (a/id :test/input (aa/input-dir input-path :watch? true))
+  (a/id :test/output (aa/output-dir output-path))
 
   (aa/pipeline [:test/input :test/output]))
 
@@ -114,11 +114,11 @@
 (defn fork-cfg
   [output-path-a output-path-b]
 
-  (a/runtime :test/rt [:test/output-a :test/output-b])
+  (a/id :test/rt (a/runtime [:test/output-a :test/output-b]))
 
-  (aa/input-dir :test/input "test/test-assets")
-  (aa/output-dir :test/output-a output-path-a)
-  (aa/output-dir :test/output-b output-path-b)
+  (a/id :test/input (aa/input-dir "test/test-assets"))
+  (a/id :test/output-a (aa/output-dir output-path-a))
+  (a/id :test/output-b (aa/output-dir output-path-b))
 
   (aa/pipeline
     [:test/input :test/output-a]
@@ -158,11 +158,11 @@
 (defn transducer-cfg
   [output-path]
 
-  (a/runtime :test/rt [:test/output])
+  (a/id :test/rt (a/runtime [:test/output]))
 
-  (aa/input-dir :test/input "test/test-assets")
-  (aa/transducer :test/xform `transducer-ctor)
-  (aa/output-dir :test/output output-path)
+  (a/id :test/input (aa/input-dir "test/test-assets"))
+  (a/id :test/xform (aa/transducer `transducer-ctor))
+  (a/id :test/output (aa/output-dir output-path))
 
   (aa/pipeline
     [:test/input :test/xform]
@@ -183,11 +183,11 @@
 (defn merge-cfg
   [input-a-path input-b-path output-path]
 
-  (a/runtime :test/rt [:test/output])
+  (a/id :test/rt (a/runtime [:test/output]))
 
-  (aa/input-dir :test/input-a input-a-path)
-  (aa/input-dir :test/input-b input-b-path)
-  (aa/output-dir :test/output output-path)
+  (a/id :test/input-a (aa/input-dir input-a-path))
+  (a/id :test/input-b (aa/input-dir input-b-path))
+  (a/id :test/output (aa/output-dir output-path))
 
   (aa/pipeline [:test/input-a :test/output #{:role-1}]
                [:test/input-b :test/output #{:role-2}]))
@@ -227,9 +227,9 @@
 (defn fsview-cfg
   [input-dir]
 
-  (a/runtime :test/rt [:test/fsview])
+  (a/id :test/rt (a/runtime [:test/fsview]))
 
-  (aa/input-dir :test/input input-dir)
+  (a/id :test/input (aa/input-dir input-dir))
 
   (a/transact [{:arachne/id :test/fsview
                 :arachne.component/constructor :arachne.assets.pipeline/fileset-view}])
@@ -275,10 +275,10 @@
 (defn jar-cfg
   [output-path]
 
-  (a/runtime :test/rt [:test/output])
+  (a/id :test/rt (a/runtime [:test/output]))
 
-  (aa/input-dir :test/input "clojure/java" :classpath? true)
-  (aa/output-dir :test/output output-path)
+  (a/id :test/input (aa/input-dir "clojure/java" :classpath? true))
+  (a/id :test/output (aa/output-dir output-path))
 
   (aa/pipeline
     [:test/input :test/output]))
@@ -297,10 +297,10 @@
 (defn multijar-cfg
   [output-path]
 
-  (a/runtime :test/rt [:test/output])
+  (a/id :test/rt (a/runtime [:test/output]))
 
-  (aa/input-dir :test/input "clojure/tools" :classpath? true)
-  (aa/output-dir :test/output output-path)
+  (a/id :test/input (aa/input-dir "clojure/tools" :classpath? true))
+  (a/id :test/output (aa/output-dir output-path))
 
   (aa/pipeline
     [:test/input :test/output]))
@@ -318,10 +318,10 @@
 (defn multijar-watch-cfg
   [output-path]
 
-  (a/runtime :test/rt [:test/output])
+  (a/id :test/rt (a/runtime [:test/output]))
 
-  (aa/input-dir :test/input "clojure/tools" :classpath? true :watch? true)
-  (aa/output-dir :test/output output-path)
+  (a/id :test/input (aa/input-dir "clojure/tools" :classpath? true :watch? true))
+  (a/id :test/output (aa/output-dir output-path))
 
   (aa/pipeline
     [:test/input :test/output]))
@@ -340,10 +340,10 @@
 (defn jar-watch-cfg
   [output-path]
 
-  (a/runtime :test/rt [:test/output])
+  (a/id :test/rt (a/runtime [:test/output]))
 
-  (aa/input-dir :test/input "clojure/java" :classpath? true :watch? true)
-  (aa/output-dir :test/output output-path)
+  (a/id :test/input (aa/input-dir  "clojure/pprint" :classpath? true :watch? true))
+  (a/id :test/output (aa/output-dir output-path))
 
   (aa/pipeline
     [:test/input :test/output]))

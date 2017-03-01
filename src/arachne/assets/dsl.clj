@@ -27,7 +27,6 @@
 
   Arguments are:
 
-  - arachne-id (optional): the Arachne ID of the component
   - dir (mandatory): the directory to read from
   - opts (optional): map (or kwargs) of additional options
 
@@ -37,13 +36,11 @@
   - :classpath? - true if the given directory is relative to the current classpath, rather than the current project
 
   Returns the entity ID of the newly created component."
-  (s/cat :arachne-id (s/? ::core/arachne-id)
-         :dir ::dir
+  (s/cat :dir ::dir
          :opts ::input-opts)
-  [<arachne-id> dir & opts]
+  [dir & opts]
   (let [tid (cfg/tempid)
         entity (util/mkeep {:db/id tid
-                            :arachne/id (:arachne-id &args)
                             :arachne.component/constructor :arachne.assets.pipeline/input-directory
                             :arachne.assets.input-directory/path (:dir &args)
                             :arachne.assets.input-directory/classpath? (-> &args :opts second :classpath?)
@@ -55,16 +52,13 @@
 
   Arguments are:
 
-  - arachne-id (optional): The Arachne ID of the component
   - dir (mandatory): The directory of the component
 
   Returns the entity ID of the newly created component."
-  (s/cat :arachne-id (s/? ::core/arachne-id)
-         :dir ::dir)
+  (s/cat :dir ::dir)
   [<arachne-id> dir]
   (let [tid (cfg/tempid)
         entity (util/mkeep {:db/id tid
-                            :arachne/id (:arachne-id &args)
                             :arachne.component/constructor :arachne.assets.pipeline/output-directory
                             :arachne.assets.output-directory/path (:dir &args)})]
     (script/transact [entity] tid)))
@@ -76,18 +70,15 @@
 
   Arguments are:
 
-  - arachne-id (optional): The Arachne ID of the component
   - ctor (mandatory): the fully-qualified symbol of a function that, when invoked and passed the
     initialized component instance will return a transducer over FileSets.
 
     Returns the entity ID of the newly created component."
-  (s/cat :arachne-id (s/? ::core/arachne-id)
-         :constructor ::constructor)
-  [<arachne-id> ctor]
+  (s/cat :constructor ::constructor)
+  [ctor]
   (let [tid (cfg/tempid)
         entity (util/mkeep
                  {:db/id tid
-                  :arachne/id (:arachne-id &args)
                   :arachne.component/constructor :arachne.assets.pipeline/transducer
                   :arachne.assets.transducer/constructor (keyword (:constructor &args))})]
     (script/transact [entity] tid)))
@@ -95,13 +86,22 @@
 (defn- wire
   "Given a tuple containing [producer-eid consumer-eid roles], return an entity map that links them up"
   [[producer consumer roles]]
-  {:db/id consumer
-   :arachne.assets.consumer/inputs [(util/mkeep {:arachne.assets.input/entity producer
-                                                 :arachne.assets.input/roles roles})]})
+  (assoc consumer
+    :arachne.assets.consumer/inputs [(util/mkeep {:arachne.assets.input/entity producer
+                                                  :arachne.assets.input/roles roles})]))
 
 (s/def ::roles (s/coll-of keyword? :min-count 1))
 
 (s/def ::pipeline-tuple (s/cat :producer ::core/ref :consumer ::core/ref :roles (s/? ::roles)))
+
+(defn- ref-txmap
+  "Given the conformed value of a ::ref spec, return map txdata with a :db/id."
+  [[type ref]]
+  (case type
+    :aid (assoc
+          (core/reified-ref ref)
+           :db/id (cfg/tempid))
+    {:db/id ref}))
 
 (defdsl pipeline
   "Wire together asset pipeline components into a directed graph, structuring the flow of assets through the pipeline.
@@ -120,7 +120,7 @@
   (s/coll-of ::pipeline-tuple :min-count 1)
   [& tuples]
   (let [tuples (map (fn [{:keys [producer consumer roles]}]
-                      [(core/resolved-ref producer) (core/resolved-ref consumer) (set roles)])
+                      [(ref-txmap producer) (ref-txmap consumer) (set roles)])
                  &args)
         txdata (map wire tuples)]
     (script/transact txdata)))
