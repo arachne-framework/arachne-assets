@@ -32,8 +32,10 @@
 
   Options currently supported are:
 
-  - :watch? - should the input watch for changes in the directory? Defaults to false.
-  - :classpath? - true if the given directory is relative to the current classpath, rather than the current project
+  - :watch? - should the input watch for changes in the directory? Defaults to
+              false.
+  - :classpath? - true if the given directory is relative to the current
+                  classpath, rather than the current project.
 
   Returns the entity ID of the newly created component."
   (s/cat :dir ::dir
@@ -48,7 +50,8 @@
     (script/transact [entity] tid)))
 
 (defdsl output-dir
-  "Define a asset consumer component that writes to a directory on the file system.
+  "Define a asset consumer component that writes to a directory on the file
+  system.
 
   Arguments are:
 
@@ -66,14 +69,16 @@
 (s/def ::constructor (s/and symbol? namespace))
 
 (defdsl transducer
-  "Define an asset consumer/producer component that applies a Clojure transducer filesets that pass through it.
+  "Define an asset consumer/producer component that applies a Clojure transducer
+  filesets that pass through it.
 
   Arguments are:
 
-  - ctor (mandatory): the fully-qualified symbol of a function that, when invoked and passed the
-    initialized component instance will return a transducer over FileSets.
+  - ctor (mandatory): the fully-qualified symbol of a function that, when invoked
+                      and passed the initialized component instance will return a
+                      transducer over FileSets.
 
-    Returns the entity ID of the newly created component."
+  Returns the entity ID of the newly created component."
   (s/cat :constructor ::constructor)
   [ctor]
   (let [tid (cfg/tempid)
@@ -104,19 +109,20 @@
     {:db/id ref}))
 
 (defdsl pipeline
-  "Wire together asset pipeline components into a directed graph, structuring the flow of assets through the pipeline.
+  "Wire together asset pipeline components into a directed graph, structuring the
+  flow of assets through the pipeline.
 
-   The arguments are any number of tuples. The structure of each tuple is:
+  The arguments are any number of tuples. The structure of each tuple is:
 
-   [<producer> <consumer> <roles?>]
+  [<producer> <consumer> <roles?>]
 
-   <producer> and <consumer> may be Arachne IDs or entity IDs.
+  <producer> and <consumer> may be Arachne IDs or entity IDs.
 
-   In every tuple, <producer> and <consumer> are mandatory, <roles> is optional.
+  In every tuple, <producer> and <consumer> are mandatory, <roles> is optional.
 
-   Each tuple establishes a producer/consumer relationship between the pipeline components, and
-   (if roles are present) specifies the role of the producer to the consumer, which is required by
-   some consumers."
+  Each tuple establishes a producer/consumer relationship between the pipeline
+  components, and (if roles are present) specifies the role of the producer to
+  the consumer, which is required by some consumers."
   (s/coll-of ::pipeline-tuple :min-count 1)
   [& tuples]
   (let [tuples (map (fn [{:keys [producer consumer roles]}]
