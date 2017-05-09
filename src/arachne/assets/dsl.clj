@@ -5,7 +5,7 @@
             [arachne.core.util :as util]
             [arachne.core.config.script :as script :refer [defdsl]]
             [arachne.core.config.specs :as ccs]
-            [clojure.spec :as s]
+            [clojure.spec.alpha :as s]
             [arachne.error :as e :refer [deferror error]]
             [clojure.string :as str]
             [arachne.core.dsl :as core]))
