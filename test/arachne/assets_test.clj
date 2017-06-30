@@ -331,18 +331,17 @@
         cfg (core/build-config [:org.arachne-framework/arachne-assets]
               `(arachne.assets-test/multijar-watch-cfg ~(.getPath output-dir)))
         rt (core/runtime cfg :test/rt)
-        ex (try
-             (c/stop (c/start rt))
-             (catch Exception e e))]
-    (is ex)
-    (is (re-find #"multiple concrete directories" (.getMessage (.getCause ex))))))
+        rt (c/start rt)]
+    (is (.exists (io/file output-dir "reader/edn.clj")))
+    (is (.exists (io/file output-dir "namespace.clj")))
+    (c/stop rt)))
 
 (defn jar-watch-cfg
   [output-path]
 
   (a/id :test/rt (a/runtime [:test/output]))
 
-  (a/id :test/input (aa/input-dir  "clojure/pprint" :classpath? true :watch? true))
+  (a/id :test/input (aa/input-dir  "clojure/java" :classpath? true :watch? true))
   (a/id :test/output (aa/output-dir output-path))
 
   (aa/pipeline
@@ -353,8 +352,6 @@
         cfg (core/build-config [:org.arachne-framework/arachne-assets]
               `(arachne.assets-test/jar-watch-cfg ~(.getPath output-dir)))
         rt (core/runtime cfg :test/rt)
-        ex (try
-             (c/stop (c/start rt))
-             (catch Exception e e))]
-    (is ex)
-    (is (re-find #"watch path in JAR" (.getMessage (.getCause ex))))))
+        rt (c/start rt)]
+    (is (re-find #"Rich Hickey" (slurp (io/file output-dir "io.clj"))))
+    (c/stop rt)))

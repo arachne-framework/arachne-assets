@@ -53,35 +53,6 @@
      (on-change nil nil)
      ch)))
 
-(deferror ::cannot-watch-jar
-  :message "Cannot watch path in JAR file for pipeline input `:eid` (Arachne ID: `:aid`)"
-  :explanation "An input component with entity ID `:eid` and Arachne ID `:aid` was instructed to watch the directory `:path` on the classpath for any changes.
-
-   However, that classpath location resolved to `:url-path`, which is in a JAR file.
-
-   Jar files cannot be watched (nor would it be meaningful to do so, as their contents cannot change at runtime.)"
-  :suggestions ["Set `:watch?` to false for this input component"
-                "Watch a directory that is not in a JAR file"]
-  :ex-data-docs {:eid "The entity id of the input"
-                 :aid "The arachne ID of the input"
-                 :path "The path specified in the config"
-                 :url-path "The actual resolved path"})
-
-(deferror ::cannot-watch-multiple-paths
-  :message "Cannot watch multiple concrete directories on classpath for pipeline input `:eid` (Arachne ID: `:aid`)"
-  :explanation "An input component with entity ID `:eid` and Arachne ID `:aid` was instructed to watch the directory `:path` on the classpath for any changes.
-
-   However, that path resolves to :urls-count locations on the classpath.
-
-   Arachne does not currently support classpath inputs that attempt to watch multiple directories at the same time."
-  :suggestions ["Set `:watch?` to false for this input component"
-                "Watch a different path that resolves to only one directory."]
-  :ex-data-docs {:eid "The entity id of the input"
-                 :aid "The arachne ID of the input"
-                 :path "The path specified in the config"
-                 :urls "The URLs that were resolved"
-                 :url-count "How many classpath resources were found at the path"})
-
 (deferror ::path-not-found
   :message "Path `:path` not found"
   :explanation "An input component with entity ID `:eid` and Arachne ID `:aid` was specified to load resources from `:path`.
@@ -92,47 +63,58 @@
                  :aid "The arachne ID of the input"
                  :path "The path specified in the config"})
 
-(defn- jar-url?
-  [url]
-  (= "jar" (.getProtocol url)))
-
 (defn- resources
   "Return a seq of all the URLS on the classpath at a particular path"
   [path]
   (enumeration-seq (.getResources (.getContextClassLoader (Thread/currentThread)) path)))
 
+(defn- jar-url?
+  [url]
+  (= "jar" (.getProtocol url)))
+
+(declare map->InputDir)
 (defrecord WatchingInputDir [dist output-ch terminate-fn]
   Producer
   (-observe [_] (a/tap dist (a/chan (a/sliding-buffer 1))))
   c/Lifecycle
   (start [this]
     (let [path (:arachne.assets.input-directory/path this)
-          file (if (:arachne.assets.input-directory/classpath? this)
-                 (let [urls (resources path)]
-                   (when (empty? urls)
-                     (error ::path-not-found {:aid (:arachne/id this)
-                                              :eid (:db/id this)
-                                              :path path
-                                              :location "on the classpath"}))
-                   (when (not= 1 (count urls))
-                     (error ::cannot-watch-multiple-paths {:aid (:arachne/id this)
-                                                           :eid (:db/id this)
-                                                           :path path
-                                                           :urls urls
-                                                           :urls-count (count urls)}))
-                   (let [url (first urls)]
-                     (when (jar-url? url) (error ::cannot-watch-jar {:aid (:arachne/id this)
-                                                                     :eid (:db/id this)
-                                                                     :path path
-                                                                     :url-path (.getPath url)}))
-                     (io/file url)))
-                 (io/file path))
-          ch (watch-dir file)
-          dist (autil/dist ch)]
-      (assoc this :output-ch ch :dist dist :terminate-fn terminate-fn)))
+          urls (if (:arachne.assets.input-directory/classpath? this)
+                 (resources path)
+                 [(.toURL (.toURI (io/file path)))])]
+      (cond
+
+        (< 1 (count urls))
+        (do
+          (log/info :msg "Classpath path resolves to multiple concrete paths and will not be watched"
+            :path path)
+          (c/start (map->InputDir this)))
+
+        (some jar-url? urls)
+        (do
+          (log/info :msg "Classpath path to location in JAR file and will not be watched"
+                    :path path)
+          (c/start (map->InputDir this)))
+
+        :else
+        (do
+          (when (empty? urls)
+            (error ::path-not-found {:aid (:arachne/id this)
+                                     :eid (:db/id this)
+                                     :path path
+                                     :location "on the classpath"}))
+          (when (and (not (:arachne.assets.input-directory/classpath? this))
+                     (not (.exists (io/file path))))
+            (error ::path-not-found {:aid (:arachne/id this)
+                                     :eid (:db/id this)
+                                     :path path
+                                     :location "relative to the process directory"}))
+          (let [ch (watch-dir (io/file (first urls)))
+                dist (autil/dist ch)]
+            (assoc this :output-ch ch :dist dist :terminate-fn terminate-fn))))))
   (stop [this]
     (log/debug :msg "stopping directory watcher component"
-               :path (:arachne.assets.input-directory/path this))
+      :path (:arachne.assets.input-directory/path this))
     (a/close! output-ch)
     (dissoc this :watcher :output-ch)))
 
@@ -163,12 +145,13 @@
           path (:arachne.assets.input-directory/path this)
           fs (if (:arachne.assets.input-directory/classpath? this)
                  (classpath-fileset this path)
-                 (if-let [f (io/file path)]
-                   (fs/add (fs/fileset) f)
-                   (error ::path-not-found {:aid (:arachne/id this)
-                                            :eid (:db/id this)
-                                            :path path
-                                            :location "relative to the process directory"})))
+                 (let [f (io/file path)]
+                   (when-not (.exists f)
+                     (error ::path-not-found {:aid (:arachne/id this)
+                                              :eid (:db/id this)
+                                              :path path
+                                              :location "relative to the process directory"}))
+                   (fs/add (fs/fileset) f)))
           dist (autil/dist ch)]
       (log/debug :msg "Processing asset input dir" :path path)
       (>!! ch fs)
